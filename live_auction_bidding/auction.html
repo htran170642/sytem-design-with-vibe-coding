@@ -1,0 +1,626 @@
+<!-- auction_test.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Auction System - Test Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .status.offline {
+            background: #ef4444;
+        }
+
+        .controls {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        .controls h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .form-group input, .form-group textarea {
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .auctions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .auction-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auction-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .auction-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .auction-header {
+            margin-bottom: 15px;
+        }
+
+        .auction-id {
+            font-size: 12px;
+            color: #999;
+            font-weight: 600;
+        }
+
+        .auction-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .auction-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .auction-status {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .auction-status.active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .auction-status.ended {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .price-info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .current-price {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .price-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .bid-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .timer {
+            background: #fef3c7;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+            font-weight: 600;
+            color: #92400e;
+        }
+
+        .bid-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .bid-form input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+        }
+
+        .bid-form button {
+            padding: 10px 20px;
+        }
+
+        .recent-bids {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #f3f4f6;
+        }
+
+        .recent-bids h4 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .bid-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .bid-user {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .bid-amount {
+            font-weight: 700;
+            color: #333;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+
+        .empty-state h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-width: 300px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            border-left: 5px solid #10b981;
+        }
+
+        .notification.error {
+            border-left: 5px solid #ef4444;
+        }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+            z-index: 999;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.1) rotate(180deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎯 Live Auction System</h1>
+            <p style="color: #666; margin: 10px 0;">Phase 2 - Database Version</p>
+            <span class="status" id="serverStatus">Checking...</span>
+        </div>
+
+        <!-- Create Auction Form -->
+        <div class="controls">
+            <h2>📝 Create New Auction</h2>
+            <form id="createAuctionForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" id="title" placeholder="e.g., Vintage Rolex" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Starting Price ($)</label>
+                        <input type="number" id="startingPrice" placeholder="1000" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Min Increment ($)</label>
+                        <input type="number" id="minIncrement" placeholder="50" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Duration (minutes)</label>
+                        <input type="number" id="duration" placeholder="60" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="description" rows="2" placeholder="Describe your item..." required></textarea>
+                </div>
+                <button type="submit" style="margin-top: 15px;">🚀 Create Auction</button>
+            </form>
+        </div>
+
+        <!-- Auctions List -->
+        <div id="auctionsList" class="auctions-grid"></div>
+    </div>
+
+    <!-- Floating Refresh Button -->
+    <button class="refresh-btn" onclick="loadAuctions()" title="Refresh">🔄</button>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let userIdCounter = Math.floor(Math.random() * 1000) + 1;
+
+        // Check server status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(API_BASE);
+                const data = await response.json();
+                document.getElementById('serverStatus').textContent = '🟢 Online';
+                document.getElementById('serverStatus').classList.remove('offline');
+                return true;
+            } catch (error) {
+                document.getElementById('serverStatus').textContent = '🔴 Offline';
+                document.getElementById('serverStatus').classList.add('offline');
+                return false;
+            }
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}`;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Format time remaining
+        function formatTimeRemaining(endTime) {
+            const now = new Date();
+            const end = new Date(endTime);
+            const diff = end - now;
+
+            if (diff <= 0) return 'Ended';
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            return `${hours}h ${minutes}m ${seconds}s remaining`;
+        }
+
+        // Create auction
+        document.getElementById('createAuctionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                starting_price: parseFloat(document.getElementById('startingPrice').value),
+                min_increment: parseFloat(document.getElementById('minIncrement').value),
+                duration_minutes: parseInt(document.getElementById('duration').value)
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/auctions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Auction created successfully!');
+                    e.target.reset();
+                    loadAuctions();
+                } else {
+                    showNotification('Failed to create auction', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        });
+
+        // Place bid
+        async function placeBid(auctionId, amount) {
+            try {
+                const response = await fetch(`${API_BASE}/auctions/${auctionId}/bids`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userIdCounter,
+                        bid_amount: parseFloat(amount)
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification(`Bid placed: $${amount}`);
+                    loadAuctions();
+                } else {
+                    showNotification(result.detail || 'Bid failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Load recent bids
+        async function loadRecentBids(auctionId) {
+            try {
+                const response = await fetch(`${API_BASE}/auctions/${auctionId}/bids?limit=3`);
+                const data = await response.json();
+                return data.bids || [];
+            } catch (error) {
+                return [];
+            }
+        }
+
+        // Render auction card
+        function renderAuctionCard(auction) {
+            const recentBids = auction.recent_bids || [];
+            
+            const card = document.createElement('div');
+            card.className = 'auction-card';
+            card.innerHTML = `
+                <div class="auction-header">
+                    <div class="auction-id">Auction #${auction.auction_id}</div>
+                    <div class="auction-title">${auction.title}</div>
+                    <div class="auction-description">${auction.description}</div>
+                    <span class="auction-status ${auction.status.toLowerCase()}">${auction.status}</span>
+                </div>
+
+                <div class="timer" id="timer-${auction.auction_id}">
+                    ${formatTimeRemaining(auction.end_time)}
+                </div>
+
+                <div class="price-info">
+                    <div class="price-label">Current Price</div>
+                    <div class="current-price">$${auction.current_price.toFixed(2)}</div>
+                    <div class="bid-info">
+                        <span>Min Increment: $${auction.min_increment}</span>
+                        <span>Bids: ${auction.total_bids}</span>
+                    </div>
+                    ${auction.current_winner_id ? `<div style="margin-top: 10px; color: #667eea; font-weight: 600;">🏆 Leading: User ${auction.current_winner_id}</div>` : ''}
+                </div>
+
+                ${auction.status === 'ACTIVE' ? `
+                    <div class="bid-form">
+                        <input type="number" 
+                               id="bid-${auction.auction_id}" 
+                               placeholder="Enter bid amount"
+                               min="${auction.current_price + auction.min_increment}"
+                               step="0.01">
+                        <button onclick="placeBid(${auction.auction_id}, document.getElementById('bid-${auction.auction_id}').value)">
+                            💰 Bid
+                        </button>
+                    </div>
+                ` : ''}
+
+                ${recentBids.length > 0 ? `
+                    <div class="recent-bids">
+                        <h4>Recent Bids</h4>
+                        ${recentBids.map(bid => `
+                            <div class="bid-item">
+                                <span class="bid-user">User ${bid.user_id}</span>
+                                <span class="bid-amount">$${bid.bid_amount.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+
+            return card;
+        }
+
+        // Load all auctions
+        async function loadAuctions() {
+            try {
+                const response = await fetch(`${API_BASE}/auctions`);
+                const data = await response.json();
+
+                const container = document.getElementById('auctionsList');
+                container.innerHTML = '';
+
+                if (data.auctions.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h2>No auctions yet</h2>
+                            <p>Create your first auction above!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                data.auctions.forEach(auction => {
+                    const card = renderAuctionCard(auction);
+                    container.appendChild(card);
+                });
+
+                // Update timers every second
+                updateTimers(data.auctions);
+            } catch (error) {
+                console.error('Error loading auctions:', error);
+            }
+        }
+
+        // Update timers
+        function updateTimers(auctions) {
+            auctions.forEach(auction => {
+                const timerElement = document.getElementById(`timer-${auction.auction_id}`);
+                if (timerElement) {
+                    setInterval(() => {
+                        timerElement.textContent = formatTimeRemaining(auction.end_time);
+                    }, 1000);
+                }
+            });
+        }
+
+        // Initialize
+        async function init() {
+            await checkServerStatus();
+            loadAuctions();
+            
+            // Auto-refresh every 5 seconds
+            // setInterval(loadAuctions, 5000);
+            
+            // Check server status every 10 seconds
+            setInterval(checkServerStatus, 10000);
+        }
+
+        init();
+    </script>
+</body>
+</html>

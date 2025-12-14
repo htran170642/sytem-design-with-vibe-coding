@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - Room</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 70%;
+        }
+
+        .message-header {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message.mine {
+            align-self: flex-end;
+        }
+
+        .message.mine .message-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.theirs .message-content {
+            background: #f0f0f0;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+
+        #message-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        .login-prompt {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .login-prompt input {
+            padding: 12px 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            margin-right: 10px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Chat Room</h1>
+        <p id="room-info">Room: general</p>
+    </div>
+
+    <div class="container">
+        <div class="messages" id="messages">
+            <div class="login-prompt">
+                <h2>Welcome to Chat!</h2>
+                <p>Enter your username to join</p>
+                <br>
+                <input type="text" id="username-input" placeholder="Username" autofocus>
+                <button onclick="login()">Join Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="input-area" id="input-area" style="display: none;">
+        <input type="text" id="message-input" placeholder="Type a message..." disabled>
+        <button onclick="sendMessage()" id="send-button" disabled>Send</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let username = null;
+        const roomId = 'general';
+        const WS_URL = 'ws://localhost:8000';
+
+        function login() {
+            const input = document.getElementById('username-input');
+            username = input.value.trim();
+
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+
+            // Connect WebSocket
+            ws = new WebSocket(`${WS_URL}/ws/${username}?room_id=${roomId}`);
+
+            ws.onopen = () => {
+                console.log('Connected to chat');
+                document.getElementById('messages').innerHTML = '';
+                document.getElementById('input-area').style.display = 'flex';
+                document.getElementById('message-input').disabled = false;
+                document.getElementById('send-button').disabled = false;
+                document.getElementById('message-input').focus();
+                document.getElementById('room-info').textContent = `Room: ${roomId} | ${username}`;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'message') {
+                    displayMessage(data.username, data.content, data.username === username);
+                } else if (data.type === 'user_joined') {
+                    displaySystemMessage(`${data.username} joined the chat`);
+                } else if (data.type === 'user_left') {
+                    displaySystemMessage(`${data.username} left the chat`);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                alert('Connection error. Please try again.');
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from chat');
+                document.getElementById('message-input').disabled = true;
+                document.getElementById('send-button').disabled = true;
+                displaySystemMessage('Disconnected from chat');
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+
+            if (!message || !ws) return;
+
+            ws.send(message);
+            input.value = '';
+        }
+
+        function displayMessage(sender, content, isMine) {
+            const messagesDiv = document.getElementById('messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isMine ? 'mine' : 'theirs'}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">${sender}</div>
+                <div class="message-content">${escapeHtml(content)}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displaySystemMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const systemDiv = document.createElement('div');
+            systemDiv.style.textAlign = 'center';
+            systemDiv.style.color = '#999';
+            systemDiv.style.fontSize = '14px';
+            systemDiv.style.padding = '10px';
+            systemDiv.textContent = text;
+            messagesDiv.appendChild(systemDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        document.getElementById('username-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>

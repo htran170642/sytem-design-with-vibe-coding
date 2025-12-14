@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Ticket Booking - Events</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .filter-group input,
+        .filter-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .events-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
+        }
+        
+        .event-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        
+        .event-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .event-image {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 3em;
+        }
+        
+        .event-content {
+            padding: 20px;
+        }
+        
+        .event-category {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        
+        .event-name {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .event-details {
+            color: #666;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .event-details span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .availability {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #f0f0f0;
+        }
+        
+        .seats-info {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .seats-available {
+            font-weight: bold;
+            color: #10b981;
+            font-size: 1.2em;
+        }
+        
+        .seats-low {
+            color: #f59e0b;
+        }
+        
+        .sold-out {
+            color: #ef4444;
+        }
+        
+        .book-button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .book-button:hover {
+            background: #5568d3;
+        }
+        
+        .book-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.2em;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .no-events {
+            background: white;
+            padding: 50px;
+            text-align: center;
+            border-radius: 15px;
+            color: #666;
+        }
+        
+        @media (max-width: 768px) {
+            .events-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎫 Event Ticket Booking</h1>
+            <p class="subtitle">Find and book tickets for amazing events</p>
+        </header>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label for="search">Search</label>
+                <input type="text" id="search" placeholder="Search events...">
+            </div>
+            <div class="filter-group">
+                <label for="city">City</label>
+                <select id="city">
+                    <option value="">All Cities</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="category">Category</label>
+                <select id="category">
+                    <option value="">All Categories</option>
+                    <option value="concert">Concert</option>
+                    <option value="sports">Sports</option>
+                    <option value="theater">Theater</option>
+                    <option value="comedy">Comedy</option>
+                </select>
+            </div>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="loading" class="loading">Loading events...</div>
+        <div id="events" class="events-grid"></div>
+        <div id="no-events" class="no-events" style="display: none;">
+            <h2>No events found</h2>
+            <p>Try adjusting your filters</p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api/v1';
+        let allEvents = [];
+        
+        // Load events
+        async function loadEvents() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('error').style.display = 'none';
+                
+                const response = await fetch(`${API_URL}/events?page_size=50`);
+                if (!response.ok) throw new Error('Failed to load events');
+                
+                const data = await response.json();
+                allEvents = data.events;
+                
+                // Populate city filter
+                const cities = [...new Set(allEvents.map(e => e.city))];
+                const citySelect = document.getElementById('city');
+                cities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    citySelect.appendChild(option);
+                });
+                
+                displayEvents(allEvents);
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('Error loading events:', error);
+                document.getElementById('error').textContent = 'Failed to load events. Please try again.';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // Display events
+        function displayEvents(events) {
+            const eventsContainer = document.getElementById('events');
+            const noEventsMsg = document.getElementById('no-events');
+            
+            if (events.length === 0) {
+                eventsContainer.innerHTML = '';
+                noEventsMsg.style.display = 'block';
+                return;
+            }
+            
+            noEventsMsg.style.display = 'none';
+            eventsContainer.innerHTML = events.map(event => `
+                <div class="event-card" onclick="bookEvent(${event.id})">
+                    <div class="event-image">🎭</div>
+                    <div class="event-content">
+                        <span class="event-category">${event.category || 'Event'}</span>
+                        <div class="event-name">${event.name}</div>
+                        <div class="event-details">
+                            <span>📍 ${event.venue}, ${event.city}</span>
+                        </div>
+                        <div class="event-details">
+                            <span>📅 ${formatDate(event.start_time)}</span>
+                        </div>
+                        <div class="availability">
+                            <div class="seats-info">
+                                <span class="${getSeatsClass(event)}">
+                                    ${event.available_seats} / ${event.total_seats}
+                                </span>
+                                seats available
+                            </div>
+                            <button class="book-button" ${event.is_sold_out ? 'disabled' : ''}>
+                                ${event.is_sold_out ? 'Sold Out' : 'Book Now'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Format date
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        // Get seats class for color
+        function getSeatsClass(event) {
+            if (event.is_sold_out) return 'sold-out';
+            const percentage = (event.available_seats / event.total_seats) * 100;
+            if (percentage < 20) return 'seats-low';
+            return 'seats-available';
+        }
+        
+        // Filter events
+        function filterEvents() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const cityFilter = document.getElementById('city').value;
+            const categoryFilter = document.getElementById('category').value;
+            
+            const filtered = allEvents.filter(event => {
+                const matchesSearch = event.name.toLowerCase().includes(searchTerm) ||
+                                    event.venue.toLowerCase().includes(searchTerm) ||
+                                    event.description?.toLowerCase().includes(searchTerm);
+                const matchesCity = !cityFilter || event.city === cityFilter;
+                const matchesCategory = !categoryFilter || event.category === categoryFilter;
+                
+                return matchesSearch && matchesCity && matchesCategory;
+            });
+            
+            displayEvents(filtered);
+        }
+        
+        // Book event
+        function bookEvent(eventId) {
+            // Store event ID and redirect to booking page
+            localStorage.setItem('selectedEventId', eventId);
+            window.location.href = 'seat_booking.html';
+        }
+        
+        // Event listeners
+        document.getElementById('search').addEventListener('input', filterEvents);
+        document.getElementById('city').addEventListener('change', filterEvents);
+        document.getElementById('category').addEventListener('change', filterEvents);
+        
+        // Load events on page load
+        loadEvents();
+    </script>
+</body>
+</html>

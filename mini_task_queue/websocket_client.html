@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini-Celery WebSocket Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #submitBtn {
+            background-color: #2196F3;
+        }
+        #submitBtn:hover {
+            background-color: #0b7dda;
+        }
+        #disconnectBtn {
+            background-color: #f44336;
+        }
+        #disconnectBtn:hover {
+            background-color: #da190b;
+        }
+        #log {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+        }
+        .log-connected { color: #4CAF50; }
+        .log-started { color: #2196F3; }
+        .log-progress { color: #FFC107; }
+        .log-completed { color: #4CAF50; }
+        .log-failed { color: #f44336; }
+        .log-error { color: #f44336; }
+        .log-info { color: #9E9E9E; }
+        #status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status-disconnected {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .status-connected {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Mini-Celery Real-Time Monitor</h1>
+        
+        <div class="input-group">
+            <label for="taskType">Task Type:</label>
+            <select id="taskType">
+                <option value="long_task">Long Task (5 steps)</option>
+                <option value="add">Add Numbers</option>
+                <option value="multiply">Multiply Numbers</option>
+                <option value="sleep">Sleep Task</option>
+                <option value="failing_task">Failing Task</option>
+            </select>
+        </div>
+
+        <div class="input-group" id="argsGroup">
+            <label for="args">Arguments (JSON array):</label>
+            <input type="text" id="args" value="[5]" placeholder='[5]'>
+        </div>
+        
+        <button id="submitBtn" onclick="submitTask()">Submit Task</button>
+        <button id="connectBtn" onclick="connectWebSocket()" disabled>Watch Task</button>
+        <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+        
+        <div id="status" class="status-disconnected">
+            Status: Disconnected
+        </div>
+        
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentTaskId = null;
+
+        // Update args based on task type
+        document.getElementById('taskType').addEventListener('change', function() {
+            const taskType = this.value;
+            const argsInput = document.getElementById('args');
+            
+            switch(taskType) {
+                case 'long_task':
+                    argsInput.value = '[5]';
+                    break;
+                case 'add':
+                case 'multiply':
+                    argsInput.value = '[10, 20]';
+                    break;
+                case 'sleep':
+                    argsInput.value = '[3]';
+                    break;
+                case 'failing_task':
+                    argsInput.value = '["test error"]';
+                    break;
+            }
+        });
+
+        function addLog(message, className = 'log-info') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${className}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function submitTask() {
+            const taskType = document.getElementById('taskType').value;
+            const argsText = document.getElementById('args').value;
+            
+            let args;
+            try {
+                args = JSON.parse(argsText);
+            } catch (e) {
+                addLog('Invalid JSON in args field', 'log-error');
+                return;
+            }
+
+            addLog(`Submitting ${taskType} task...`, 'log-info');
+
+            try {
+                const response = await fetch('http://localhost:8000/tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: taskType,
+                        args: args
+                    })
+                });
+
+                const data = await response.json();
+                currentTaskId = data.task_id;
+
+                addLog(`✅ Task submitted: ${currentTaskId}`, 'log-info');
+                addLog(`Status: ${data.status}`, 'log-info');
+
+                document.getElementById('connectBtn').disabled = false;
+                
+            } catch (error) {
+                addLog(`❌ Error submitting task: ${error}`, 'log-error');
+            }
+        }
+
+        function connectWebSocket() {
+            if (!currentTaskId) {
+                addLog('No task ID available. Submit a task first.', 'log-error');
+                return;
+            }
+
+            const wsUrl = `ws://localhost:8000/ws/tasks/${currentTaskId}`;
+            addLog(`Connecting to WebSocket: ${wsUrl}`, 'log-info');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                addLog('🔌 WebSocket connected!', 'log-connected');
+                document.getElementById('status').textContent = 'Status: Connected';
+                document.getElementById('status').className = 'status-connected';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.event === 'connected') {
+                    addLog(`📡 ${data.message}`, 'log-connected');
+                    addLog(`Current status: ${data.current_status}`, 'log-info');
+                }
+                else if (data.event === 'started') {
+                    addLog(`🚀 Task started by Worker-${data.data.worker_id}`, 'log-started');
+                }
+                else if (data.event === 'progress') {
+                    const p = data.data;
+                    addLog(`📊 Progress: ${p.step}/${p.total_steps} (${p.progress_percent.toFixed(0)}%) - ${p.message}`, 'log-progress');
+                }
+                else if (data.event === 'completed') {
+                    addLog(`✅ Task completed in ${data.data.duration.toFixed(2)}s`, 'log-completed');
+                    addLog(`Result: ${JSON.stringify(data.data.result)}`, 'log-completed');
+                }
+                else if (data.event === 'failed') {
+                    addLog(`❌ Task failed: ${data.data.error}`, 'log-failed');
+                }
+                else if (data.event === 'stream_end') {
+                    addLog(`👋 ${data.message}`, 'log-info');
+                }
+                else if (data.error) {
+                    addLog(`❌ Error: ${data.error}`, 'log-error');
+                }
+            };
+
+            ws.onerror = function(error) {
+                addLog(`❌ WebSocket error: ${error}`, 'log-error');
+            };
+
+            ws.onclose = function() {
+                addLog('🔌 WebSocket disconnected', 'log-info');
+                document.getElementById('status').textContent = 'Status: Disconnected';
+                document.getElementById('status').className = 'status-disconnected';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        // Initial log
+        addLog('Welcome to Mini-Celery Real-Time Monitor!', 'log-info');
+        addLog('Submit a task and watch it execute in real-time.', 'log-info');
+    </script>
+</body>
+</html>

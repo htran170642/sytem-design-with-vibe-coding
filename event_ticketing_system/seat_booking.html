@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Seats - Event Ticket Booking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .back-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+        
+        .event-info {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .event-name {
+            font-size: 2em;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .event-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            color: #666;
+        }
+        
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .seat-map-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .section-title {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .legend-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+        }
+        
+        .available { background: #10b981; }
+        .selected { background: #3b82f6; }
+        .hold { background: #f59e0b; }
+        .booked { background: #ef4444; }
+        
+        .sections {
+            display: grid;
+            gap: 30px;
+        }
+        
+        .section {
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .section-header {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        
+        .seats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 8px;
+        }
+        
+        .seat {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: white;
+        }
+        
+        .seat.available {
+            background: #10b981;
+            color: white;
+            border-color: #059669;
+        }
+        
+        .seat.available:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+        
+        .seat.selected {
+            background: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+            transform: scale(1.1);
+        }
+        
+        .seat.hold {
+            background: #f59e0b;
+            color: white;
+            border-color: #d97706;
+            cursor: not-allowed;
+        }
+        
+        .seat.booked {
+            background: #ef4444;
+            color: white;
+            border-color: #dc2626;
+            cursor: not-allowed;
+        }
+        
+        .sidebar {
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+        
+        .booking-summary {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .summary-title {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .booking-info {
+            background: #f0f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .booking-info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .booking-info-label {
+            color: #666;
+        }
+        
+        .booking-info-value {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .selected-seats {
+            margin-bottom: 20px;
+        }
+        
+        .selected-seat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .seat-label {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .seat-price {
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .total {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        
+        .user-input {
+            margin-bottom: 20px;
+        }
+        
+        .user-input label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .user-input input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .user-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .booking-timer {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: none;
+        }
+        
+        .timer-text {
+            font-size: 14px;
+            color: #92400e;
+            margin-bottom: 5px;
+        }
+        
+        .timer {
+            font-size: 2em;
+            font-weight: bold;
+            color: #b45309;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover:not(:disabled) {
+            background: #059669;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        
+        .success-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            text-align: center;
+            animation: slideIn 0.3s;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .success-icon {
+            font-size: 5em;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🎫 Book Your Seats</h1>
+            <button class="back-btn" onclick="window.location.href='event_list.html'">
+                ← Back to Events
+            </button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="event-info" id="event-info">
+                <div class="loading">Loading event details...</div>
+            </div>
+            
+            <div class="seat-map-container">
+                <div id="connection-status" class="connection-status disconnected">
+                    🔴 Connecting to real-time updates...
+                </div>
+                
+                <h2 class="section-title">Select Your Seats</h2>
+                
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-box available"></div>
+                        <span>Available</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box selected"></div>
+                        <span>Selected</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box hold"></div>
+                        <span>On Hold</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box booked"></div>
+                        <span>Booked</span>
+                    </div>
+                </div>
+                
+                <div id="seat-map" class="sections">
+                    <div class="loading">Loading seat map...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="booking-summary">
+                <h2 class="summary-title">Booking Summary</h2>
+                
+                <!-- Booking Info (shown during HOLD) -->
+                <div class="booking-info" id="booking-info" style="display: none;">
+                    <div class="booking-info-item">
+                        <span class="booking-info-label">Booking ID:</span>
+                        <span class="booking-info-value" id="display-booking-id">-</span>
+                    </div>
+                    <div class="booking-info-item">
+                        <span class="booking-info-label">User ID:</span>
+                        <span class="booking-info-value" id="display-user-id">-</span>
+                    </div>
+                    <div class="booking-info-item">
+                        <span class="booking-info-label">Status:</span>
+                        <span class="booking-info-value" id="display-status">HOLD</span>
+                    </div>
+                </div>
+                
+                <!-- Timer (shown during HOLD) -->
+                <div class="booking-timer" id="booking-timer">
+                    <div class="timer-text">Time Remaining</div>
+                    <div class="timer" id="timer">5:00</div>
+                </div>
+                
+                <!-- User Input (hidden during HOLD) -->
+                <div class="user-input" id="user-input-section">
+                    <label for="user-id">Your User ID</label>
+                    <input type="number" id="user-id" value="1" min="1">
+                </div>
+                
+                <!-- Selected Seats List -->
+                <div class="selected-seats" id="selected-seats-list">
+                    <p style="color: #999; text-align: center;">No seats selected</p>
+                </div>
+                
+                <!-- Total -->
+                <div class="total">
+                    <span>Total:</span>
+                    <span id="total-amount">$0.00</span>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="hold-btn" onclick="createBooking()" disabled>
+                        Hold Seats (5 min)
+                    </button>
+                    <button class="btn btn-success" id="confirm-btn" onclick="confirmBooking()" style="display: none;">
+                        💳 Pay & Confirm
+                    </button>
+                    <button class="btn btn-danger" id="cancel-btn" onclick="cancelBooking()" style="display: none;">
+                        Cancel Booking
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Success Modal -->
+    <div class="success-modal" id="success-modal">
+        <div class="modal-content">
+            <div class="success-icon">🎉</div>
+            <h2>Booking Confirmed!</h2>
+            <p style="margin: 20px 0; color: #666;">
+                Your tickets have been successfully booked.
+            </p>
+            <button class="btn btn-primary" onclick="window.location.href='event_list.html'">
+                Back to Events
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api/v1';
+        const WS_URL = 'ws://localhost:8000/ws';
+        
+        let eventId = null;
+        let eventData = null;
+        let seatsData = {};
+        let selectedSeats = [];
+        let currentBooking = null;
+        let timerInterval = null;
+        let ws = null;
+        
+        // Initialize
+        async function init() {
+            eventId = localStorage.getItem('selectedEventId');
+            if (!eventId) {
+                alert('No event selected');
+                window.location.href = 'event_list.html';
+                return;
+            }
+            
+            await loadEvent();
+            await loadSeats();
+            connectWebSocket();
+        }
+        
+        // Load event details
+        async function loadEvent() {
+            try {
+                const response = await fetch(`${API_URL}/events/${eventId}`);
+                eventData = await response.json();
+                
+                document.getElementById('event-info').innerHTML = `
+                    <h1 class="event-name">${eventData.name}</h1>
+                    <div class="event-details">
+                        <div class="detail-item">📍 ${eventData.venue}, ${eventData.city}</div>
+                        <div class="detail-item">📅 ${formatDate(eventData.start_time)}</div>
+                        <div class="detail-item">🎫 ${eventData.available_seats} / ${eventData.total_seats} available</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading event:', error);
+            }
+        }
+        
+        // Load seat map
+        async function loadSeats() {
+            console.log('Loading seats for event', eventId);
+            try {
+                const response = await fetch(`${API_URL}/events/${eventId}/seats`);
+                const data = await response.json();
+                
+                seatsData = {};
+                data.seats.forEach(seat => {
+                    seatsData[seat.id] = seat;
+                });
+                
+                renderSeatMap(data.sections);
+            } catch (error) {
+                console.error('Error loading seats:', error);
+            }
+        }
+        
+        // Render seat map
+        function renderSeatMap(sections) {
+            const seatMap = document.getElementById('seat-map');
+            seatMap.innerHTML = '';
+            
+            for (const [sectionName, seats] of Object.entries(sections)) {
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'section';
+                
+                const sectionPrice = Number(seats[0].price);
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'section-header';
+                headerDiv.textContent = `${sectionName} - $${sectionPrice.toFixed(2)}`;
+                sectionDiv.appendChild(headerDiv);
+                
+                const seatsGrid = document.createElement('div');
+                seatsGrid.className = 'seats-grid';
+                
+                seats.forEach(seat => {
+                    const seatDiv = document.createElement('div');
+                    seatDiv.className = `seat ${seat.status.toLowerCase()}`;
+                    seatDiv.textContent = seat.seat_number;
+                    
+                    seatDiv.dataset.seatId = seat.id;
+                    seatDiv.dataset.seatLabel = seat.seat_label;
+                    seatDiv.dataset.seatPrice = seat.price;
+                    seatDiv.dataset.seatStatus = seat.status;
+                    
+                    seatDiv.addEventListener('click', function() {
+                        const id = Number(this.dataset.seatId);
+                        const label = this.dataset.seatLabel;
+                        const price = Number(this.dataset.seatPrice);
+                        const status = this.dataset.seatStatus;
+                        
+                        toggleSeat(id, label, price, status);
+                    });
+                    
+                    seatsGrid.appendChild(seatDiv);
+                });
+                
+                sectionDiv.appendChild(seatsGrid);
+                seatMap.appendChild(sectionDiv);
+            }
+        }
+        
+        // Toggle seat selection
+        function toggleSeat(seatId, label, price, status) {
+            if (status !== 'AVAILABLE' && !selectedSeats.find(s => s.id === seatId)) {
+                return;
+            }
+            
+            if (currentBooking) {
+                alert('You already have an active booking. Please confirm or cancel it first.');
+                return;
+            }
+            
+            const index = selectedSeats.findIndex(s => s.id === seatId);
+            if (index > -1) {
+                selectedSeats.splice(index, 1);
+            } else {
+                if (selectedSeats.length >= 10) {
+                    alert('Maximum 10 seats per booking');
+                    return;
+                }
+                selectedSeats.push({ id: seatId, label, price: Number(price) });
+            }
+            
+            updateUI();
+        }
+        
+        // Update UI
+        function updateUI() {
+            document.querySelectorAll('.seat').forEach(seat => {
+                const seatId = Number(seat.dataset.seatId);
+                if (selectedSeats.find(s => s.id === seatId)) {
+                    seat.classList.add('selected');
+                } else {
+                    seat.classList.remove('selected');
+                }
+            });
+            
+            const list = document.getElementById('selected-seats-list');
+            if (selectedSeats.length === 0) {
+                list.innerHTML = '<p style="color: #999; text-align: center;">No seats selected</p>';
+            } else {
+                list.innerHTML = selectedSeats.map(seat => `
+                    <div class="selected-seat-item">
+                        <span class="seat-label">${seat.label}</span>
+                        <span class="seat-price">$${Number(seat.price).toFixed(2)}</span>
+                    </div>
+                `).join('');
+            }
+            
+            const total = selectedSeats.reduce((sum, seat) => sum + Number(seat.price), 0);
+            document.getElementById('total-amount').textContent = `$${total.toFixed(2)}`;
+            
+            document.getElementById('hold-btn').disabled = selectedSeats.length === 0;
+        }
+        
+        // Create booking (HOLD)
+        async function createBooking() {
+            try {
+                const userId = document.getElementById('user-id').value;
+                const seatIds = selectedSeats.map(s => s.id);
+                
+                console.log('Creating booking with seats:', seatIds);
+                
+                const response = await fetch(`${API_URL}/bookings?user_id=${userId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event_id: Number(eventId),
+                        seat_ids: seatIds
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.detail);
+                    return;
+                }
+                
+                currentBooking = await response.json();
+                console.log('✅ Booking created:', currentBooking);
+                
+                // Show booking info
+                const bookingInfoEl = document.getElementById('booking-info');
+                if (bookingInfoEl) {
+                    bookingInfoEl.style.display = 'block';
+                    document.getElementById('display-booking-id').textContent = `#${currentBooking.id}`;
+                    document.getElementById('display-user-id').textContent = currentBooking.user_id;
+                    document.getElementById('display-status').textContent = currentBooking.status;
+                } else {
+                    console.error('❌ booking-info element not found!');
+                }
+                
+                // Update seats list from API response
+                const list = document.getElementById('selected-seats-list');
+                if (list && currentBooking.seats && currentBooking.seats.length > 0) {
+                    list.innerHTML = currentBooking.seats.map(seat => `
+                        <div class="selected-seat-item">
+                            <span class="seat-label">${seat.seat_label}</span>
+                            <span class="seat-price">$${Number(seat.price_at_booking).toFixed(2)}</span>
+                        </div>
+                    `).join('');
+                    console.log('✅ Displayed', currentBooking.seats.length, 'seats');
+                } else {
+                    console.error('❌ No seats in booking response!');
+                }
+                
+                // Update total
+                document.getElementById('total-amount').textContent = `$${Number(currentBooking.total_amount).toFixed(2)}`;
+                console.log('✅ Total:', currentBooking.total_amount);
+                
+                // Show/hide UI elements
+                document.getElementById('booking-timer').style.display = 'block';
+                document.getElementById('user-input-section').style.display = 'none';
+                document.getElementById('hold-btn').style.display = 'none';
+                document.getElementById('confirm-btn').style.display = 'block';
+                document.getElementById('cancel-btn').style.display = 'block';
+                
+                // Start timer
+                startTimer(currentBooking.time_remaining_seconds);
+                
+                // Clear selection and reload seat map
+                selectedSeats = [];
+                
+            } catch (error) {
+                console.error('❌ Error creating booking:', error);
+                alert('Failed to create booking: ' + error.message);
+            }
+        }
+        
+        // Confirm booking
+        async function confirmBooking() {
+            try {
+                const userId = document.getElementById('user-id').value;
+                const bookingId = currentBooking.id;
+                
+                const response = await fetch(`${API_URL}/bookings/${bookingId}/confirm?user_id=${userId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        payment_id: `pi_${Date.now()}`
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.detail);
+                    return;
+                }
+                
+                const confirmedBooking = await response.json();
+                
+                // Update status
+                document.getElementById('display-status').textContent = 'CONFIRMED';
+                document.getElementById('display-status').style.color = '#10b981';
+                
+                document.getElementById('success-modal').style.display = 'flex';
+                stopTimer();
+                currentBooking = null;
+                
+            } catch (error) {
+                console.error('Error confirming booking:', error);
+                alert('Failed to confirm booking');
+            }
+        }
+        
+        // Cancel booking
+        async function cancelBooking() {
+            if (!confirm('Are you sure you want to cancel this booking?')) {
+                return;
+            }
+            
+            try {
+                const userId = document.getElementById('user-id').value;
+                const bookingId = currentBooking.id;
+                
+                await fetch(`${API_URL}/bookings/${bookingId}?user_id=${userId}`, {
+                    method: 'DELETE'
+                });
+                
+                stopTimer();
+                currentBooking = null;
+                
+                // Reset UI
+                document.getElementById('booking-info').style.display = 'none';
+                document.getElementById('booking-timer').style.display = 'none';
+                document.getElementById('user-input-section').style.display = 'block';
+                document.getElementById('hold-btn').style.display = 'block';
+                document.getElementById('confirm-btn').style.display = 'none';
+                document.getElementById('cancel-btn').style.display = 'none';
+                
+                // Reset seats list
+                document.getElementById('selected-seats-list').innerHTML = '<p style="color: #999; text-align: center;">No seats selected</p>';
+                document.getElementById('total-amount').textContent = '$0.00';
+                
+            } catch (error) {
+                console.error('Error cancelling booking:', error);
+            }
+        }
+        
+        // Timer
+        function startTimer(seconds) {
+            let remaining = seconds;
+            
+            function updateTimer() {
+                const mins = Math.floor(remaining / 60);
+                const secs = remaining % 60;
+                document.getElementById('timer').textContent = 
+                    `${mins}:${secs.toString().padStart(2, '0')}`;
+                
+                if (remaining <= 0) {
+                    stopTimer();
+                    console.log('💥 Booking expired, reloading page.');
+                    alert('Booking expired! Seats have been released.');
+                    window.location.reload();
+                }
+                
+                remaining--;
+            }
+            
+            updateTimer();
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+        
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            ws = new WebSocket(`${WS_URL}/events/${eventId}`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('connection-status').className = 'connection-status connected';
+                document.getElementById('connection-status').textContent = '🟢 Real-time updates active';
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📨 WebSocket message:', data);
+                
+                if (data.type === 'seat_update') {
+                    console.log(`🔄 Seats ${data.seat_ids} → ${data.status}`);
+                    
+                    // ✅ Step 1: Immediately update seat visuals (instant feedback)
+                    data.seat_ids.forEach(seatId => {
+                        const seatElement = document.querySelector(`[data-seat-id="${seatId}"]`);
+                        if (seatElement) {
+                            // Remove all status classes
+                            seatElement.classList.remove('available', 'hold', 'booked', 'selected');
+                            // Add new status class
+                            seatElement.classList.add(data.status.toLowerCase());
+                            // Update data attribute
+                            seatElement.dataset.seatStatus = data.status;
+                            console.log(`✅ Updated seat ${seatId} visual to ${data.status}`);
+                        }
+                    });
+                    
+                    // ✅ Step 2: Reload from server to confirm
+                    await loadSeats();
+                }
+                
+                if (data.type === 'booking_expired') {
+                    console.log(`⏰ Booking ${data.booking_id} expired, releasing seats:`, data.seat_ids);
+                    
+                    // ✅ Step 1: Immediately update seat visuals to AVAILABLE
+                    data.seat_ids.forEach(seatId => {
+                        const seatElement = document.querySelector(`[data-seat-id="${seatId}"]`);
+                        if (seatElement) {
+                            console.log(`🔄 Changing seat ${seatId} from ${seatElement.className} to available`);
+                            // Remove all status classes
+                            seatElement.classList.remove('available', 'hold', 'booked', 'selected');
+                            // Add available class
+                            seatElement.classList.add('available');
+                            // Update data attribute
+                            seatElement.dataset.seatStatus = 'AVAILABLE';
+                            console.log(`✅ Seat ${seatId} is now: ${seatElement.className}`);
+                        } else {
+                            console.error(`❌ Seat ${seatId} not found in DOM!`);
+                        }
+                    });
+                    
+                    // ✅ Step 2: Reload seat map from server
+                    console.log('🔄 Reloading seat map from server...');
+                    await loadSeats();
+                    
+                    // ✅ Step 3: If it's our booking, reset UI
+                    if (currentBooking && data.booking_id === currentBooking.id) {
+                        console.log('💥 Our booking expired!');
+                        stopTimer();
+                        currentBooking = null;
+                        
+                        document.getElementById('booking-info').style.display = 'none';
+                        document.getElementById('booking-timer').style.display = 'none';
+                        document.getElementById('user-input-section').style.display = 'block';
+                        document.getElementById('hold-btn').style.display = 'block';
+                        document.getElementById('confirm-btn').style.display = 'none';
+                        document.getElementById('cancel-btn').style.display = 'none';
+                        
+                        document.getElementById('selected-seats-list').innerHTML = 
+                            '<p style="color: #999; text-align: center;">No seats selected</p>';
+                        document.getElementById('total-amount').textContent = '$0.00';
+                    }
+                }
+                
+                if (data.type === 'connected') {
+                    console.log('✅ WebSocket:', data.message);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('connection-status').className = 'connection-status disconnected';
+                document.getElementById('connection-status').textContent = '🔴 Real-time updates disconnected';
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        // Format date
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        // Initialize on load
+        init();
+        
+        // Cleanup on unload
+        window.addEventListener('beforeunload', () => {
+            if (ws) ws.close();
+            stopTimer();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Auction System - Real-Time Bidding</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1>🎯 Live Auction System</h1>
+                <p class="subtitle">Phase 5: Message Queue + Cache + Pub/Sub</p>
+            </div>
+            <div class="header-stats" id="serverStats">
+                <div class="stat-item">
+                    <span class="stat-label">Status</span>
+                    <span class="stat-value" id="serverStatus">Loading...</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Active Auctions</span>
+                    <span class="stat-value" id="activeAuctions">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Bids</span>
+                    <span class="stat-value" id="totalBids">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="container">
+            <a href="#dashboard" class="nav-link active">Dashboard</a>
+            <a href="#auctions" class="nav-link">Live Auctions</a>
+            <a href="#api" class="nav-link">API Docs</a>
+            <a href="#monitoring" class="nav-link">Monitoring</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section">
+                <h2 class="section-title">📊 System Dashboard</h2>
+                
+                <div class="cards">
+                    <!-- Features Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>✨ Features</h3>
+                        </div>
+                        <div class="card-body">
+                            <ul class="feature-list">
+                                <li>
+                                    <span class="feature-icon">📥</span>
+                                    <div>
+                                        <strong>Message Queue System</strong>
+                                        <p>Async bid processing with Redis</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="feature-icon">💾</span>
+                                    <div>
+                                        <strong>Caching Layer</strong>
+                                        <p>99% hit rate for lightning-fast responses</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="feature-icon">📡</span>
+                                    <div>
+                                        <strong>Redis Pub/Sub</strong>
+                                        <p>Real-time updates across multiple servers</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="feature-icon">🔒</span>
+                                    <div>
+                                        <strong>Distributed Locks</strong>
+                                        <p>Prevents race conditions</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="feature-icon">⚡</span>
+                                    <div>
+                                        <strong>WebSocket Updates</strong>
+                                        <p>Live bidding experience</p>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Quick Links Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>🔗 Quick Links</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="link-grid">
+                                <a href="/docs" target="_blank" class="link-button">
+                                    <span class="link-icon">📚</span>
+                                    <span>API Documentation</span>
+                                </a>
+                                <a href="/admin/health" target="_blank" class="link-button">
+                                    <span class="link-icon">💚</span>
+                                    <span>Health Check</span>
+                                </a>
+                                <a href="/admin/cache-stats" target="_blank" class="link-button">
+                                    <span class="link-icon">💾</span>
+                                    <span>Cache Stats</span>
+                                </a>
+                                <a href="/admin/queue-stats" target="_blank" class="link-button">
+                                    <span class="link-icon">📋</span>
+                                    <span>Queue Stats</span>
+                                </a>
+                                <a href="/admin/pubsub-stats" target="_blank" class="link-button">
+                                    <span class="link-icon">📡</span>
+                                    <span>Pub/Sub Stats</span>
+                                </a>
+                                <a href="/auctions" target="_blank" class="link-button">
+                                    <span class="link-icon">🔍</span>
+                                    <span>List Auctions (JSON)</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Stats Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📈 System Statistics</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="stats-grid" id="systemStats">
+                                <div class="stat-box">
+                                    <div class="stat-box-label">Cache Hit Rate</div>
+                                    <div class="stat-box-value" id="cacheHitRate">Loading...</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-box-label">Queued Bids</div>
+                                    <div class="stat-box-value" id="queuedBids">0</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-box-label">Database</div>
+                                    <div class="stat-box-value" id="dbStatus">✅</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-box-label">Redis</div>
+                                    <div class="stat-box-value" id="redisStatus">✅</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Auctions Section -->
+            <section id="auctions" class="section">
+                <h2 class="section-title">🔨 Live Auctions</h2>
+                <div id="auctionsList" class="auctions-grid">
+                    <!-- Auctions will be loaded here via JavaScript -->
+                    <div class="loading">Loading auctions...</div>
+                </div>
+            </section>
+
+            <!-- API Documentation Section -->
+            <section id="api" class="section">
+                <h2 class="section-title">📚 API Documentation</h2>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Available Endpoints</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="endpoint-list">
+                            <!-- Auctions -->
+                            <div class="endpoint-group">
+                                <h4>Auctions</h4>
+                                <div class="endpoint">
+                                    <span class="method post">POST</span>
+                                    <code>/auctions</code>
+                                    <span class="desc">Create new auction</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/auctions</code>
+                                    <span class="desc">List all auctions</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/auctions/{id}</code>
+                                    <span class="desc">Get auction details</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/auctions/{id}/statistics</code>
+                                    <span class="desc">Get auction statistics</span>
+                                </div>
+                            </div>
+
+                            <!-- Bids -->
+                            <div class="endpoint-group">
+                                <h4>Bids</h4>
+                                <div class="endpoint">
+                                    <span class="method post">POST</span>
+                                    <code>/bids/auctions/{id}/bids/async</code>
+                                    <span class="desc">Place bid (async)</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/bids/{bid_id}/status</code>
+                                    <span class="desc">Check bid status</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/bids/auctions/{id}/bids</code>
+                                    <span class="desc">Get bid history</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/bids/users/{id}/bids</code>
+                                    <span class="desc">Get user's bids</span>
+                                </div>
+                            </div>
+
+                            <!-- Admin -->
+                            <div class="endpoint-group">
+                                <h4>Admin / Monitoring</h4>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/admin/cache-stats</code>
+                                    <span class="desc">Cache statistics</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/admin/queue-stats</code>
+                                    <span class="desc">Queue statistics</span>
+                                </div>
+                                <div class="endpoint">
+                                    <span class="method get">GET</span>
+                                    <code>/admin/health</code>
+                                    <span class="desc">Health check</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="api-link">
+                            <a href="/docs" target="_blank" class="button-primary">
+                                Open Interactive API Docs (Swagger UI)
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Monitoring Section -->
+            <section id="monitoring" class="section">
+                <h2 class="section-title">🔍 System Monitoring</h2>
+                
+                <div class="cards">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>💾 Cache Performance</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="cacheStats" class="monitoring-content">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 Queue Status</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="queueStats" class="monitoring-content">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📡 Pub/Sub Activity</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="pubsubStats" class="monitoring-content">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Start Section -->
+            <section id="quickstart" class="section">
+                <h2 class="section-title">🚀 Quick Start</h2>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Getting Started</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="code-block">
+                            <h4>1. Start Server</h4>
+                            <pre><code>python run.py</code></pre>
+                        </div>
+
+                        <div class="code-block">
+                            <h4>2. Start Worker</h4>
+                            <pre><code>python -m worker.bid_worker 1</code></pre>
+                        </div>
+
+                        <div class="code-block">
+                            <h4>3. Create Auction (curl)</h4>
+                            <pre><code>curl -X POST http://localhost:8000/auctions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Vintage Watch",
+    "description": "Rare collectible",
+    "starting_price": 1000,
+    "min_increment": 50,
+    "duration_minutes": 60
+  }'</code></pre>
+                        </div>
+
+                        <div class="code-block">
+                            <h4>4. Place Bid (curl)</h4>
+                            <pre><code>curl -X POST http://localhost:8000/bids/auctions/1/bids/async \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 1,
+    "bid_amount": 1050
+  }'</code></pre>
+                        </div>
+
+                        <div class="code-block">
+                            <h4>5. Run Tests</h4>
+                            <pre><code>pytest tests/test_api_routes.py -v</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>Live Auction System v1.0.0 | Phase 5: Complete System</p>
+            <p>Built with FastAPI + Redis + PostgreSQL + WebSockets</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

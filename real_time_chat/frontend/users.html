@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - User List</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-screen {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-screen h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .login-screen p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .login-screen input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+
+        .login-screen input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-screen button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .login-screen button:hover {
+            background: #5568d3;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            max-width: 1400px;
+            width: 100%;
+            background: white;
+            box-shadow: 0 0 50px rgba(0,0,0,0.3);
+        }
+
+        /* Left Panel - User List */
+        .user-list-panel {
+            width: 320px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .panel-header {
+            padding: 20px;
+            background: #667eea;
+            color: white;
+        }
+
+        .panel-header h2 {
+            margin-bottom: 10px;
+            font-size: 20px;
+        }
+
+        .user-info {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: #f5f7ff;
+        }
+
+        .tab:hover {
+            background: #f5f5f5;
+        }
+
+        .search-box {
+            padding: 15px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .user-list {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .user-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-item:hover {
+            background: #f8f9ff;
+        }
+
+        .user-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .status-indicator {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+
+        .status-indicator.online {
+            background: #4caf50;
+        }
+
+        .status-indicator.offline {
+            background: #9e9e9e;
+        }
+
+        .user-info-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        .user-status {
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* Middle Panel - Conversations */
+        .conversations-panel {
+            width: 320px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .conversations-panel .panel-header {
+            background: #764ba2;
+        }
+
+        .conversation-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .conversation-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .conversation-item:hover {
+            background: #f8f9ff;
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .conversation-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .conversation-time {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .conversation-preview {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-badge {
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        /* Right Panel - Chat Area */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-placeholder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #999;
+        }
+
+        .chat-placeholder-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message.mine {
+            flex-direction: row-reverse;
+        }
+
+        .message-content {
+            max-width: 60%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message.mine .message-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.theirs .message-content {
+            background: white;
+            border: 1px solid #e0e0e0;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .message-input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 15px;
+            resize: none;
+            font-family: inherit;
+        }
+
+        #message-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #send-button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        #send-button:hover {
+            background: #5568d3;
+        }
+
+        #send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #999;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <h1>💬 Chat App</h1>
+        <p>Enter your username to start chatting</p>
+        <input type="text" id="username-input" placeholder="Username" autofocus>
+        <button onclick="login()">Login</button>
+    </div>
+
+    <!-- Chat Screen -->
+    <div id="chat-screen" class="container hidden">
+        <!-- Left Panel: User List -->
+        <div class="user-list-panel">
+            <div class="panel-header">
+                <h2>Users</h2>
+                <div class="user-info">Logged in as: <span id="current-user"></span></div>
+            </div>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('all')">All Users</div>
+                <div class="tab" onclick="showTab('online')">Online</div>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="user-search" placeholder="Search users..." oninput="searchUsers()">
+            </div>
+            
+            <div class="user-list" id="user-list">
+                <div class="empty-state">Loading users...</div>
+            </div>
+        </div>
+
+        <!-- Middle Panel: Conversations -->
+        <div class="conversations-panel">
+            <div class="panel-header">
+                <h2>Conversations</h2>
+            </div>
+            
+            <div class="conversation-list" id="conversation-list">
+                <div class="empty-state">No conversations yet</div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Chat Area -->
+        <div class="chat-area">
+            <div id="chat-placeholder" class="chat-placeholder">
+                <div class="chat-placeholder-icon">💬</div>
+                <h3>Select a conversation to start chatting</h3>
+                <p>Choose a user from the list to begin</p>
+            </div>
+            
+            <div id="chat-content" class="hidden" style="display: flex; flex-direction: column; flex: 1;">
+                <div class="chat-header" id="chat-header">
+                    <div class="user-avatar">
+                        <span id="chat-user-initial"></span>
+                        <div class="status-indicator" id="chat-user-status"></div>
+                    </div>
+                    <div>
+                        <div class="user-name" id="chat-user-name"></div>
+                        <div class="user-status" id="chat-user-status-text"></div>
+                    </div>
+                </div>
+                
+                <div class="messages" id="messages"></div>
+                
+                <div class="message-input-area">
+                    <input 
+                        type="text" 
+                        id="message-input" 
+                        placeholder="Type a message..."
+                        disabled
+                    >
+                    <button id="send-button" onclick="sendMessage()" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentUser = null;
+        let activeConversation = null;
+        let currentTab = 'all';
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        // API Base URL
+        const API_URL = 'http://localhost:8000';
+        const WS_URL = 'ws://localhost:8000';
+
+        // ========== LOGIN ==========
+        
+        async function login() {
+            const username = document.getElementById('username-input').value.trim();
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+
+            try {
+                // Auto-register if user doesn't exist
+                const response = await fetch(
+                    `${API_URL}/users/register`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: username,
+                            email: `${username}@chat.local`
+                        })
+                    }
+                );
+                
+                if (response.ok) {
+                    console.log('✅ New user registered:', username);
+                } else if (response.status === 400) {
+                    console.log('✅ Existing user logging in:', username);
+                } else {
+                    throw new Error('Unexpected error');
+                }
+                
+                currentUser = username;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('chat-screen').classList.remove('hidden');
+                document.getElementById('current-user').textContent = username;
+
+                await loadUserList();
+                await loadConversations();
+                connectWebSocket();
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Failed to connect to server. Is the server running?');
+            }
+        }
+
+        // ========== WEBSOCKET ==========
+        
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('WebSocket already connected');
+                return;
+            }
+
+            if (ws) {
+                ws.close();
+            }
+
+            console.log(`Connecting WebSocket for ${currentUser}...`);
+            ws = new WebSocket(`${WS_URL}/ws/dm/${currentUser}`);
+
+            ws.onopen = () => {
+                console.log('✅ WebSocket connected');
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'direct_message') {
+                    if (activeConversation === data.from) {
+                        displayMessage(data, false);
+                    }
+                    loadConversations();
+                    
+                } else if (data.type === 'status_change') {
+                    updateUserStatus(data.user_id, data.username, data.is_online);
+                    loadUserList();
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+            };
+
+            ws.onclose = (event) => {
+                console.log('❌ WebSocket disconnected');
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    console.log(`Reconnecting... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                    
+                    setTimeout(() => {
+                        connectWebSocket();
+                    }, 2000);
+                } else {
+                    console.error('Max reconnection attempts reached');
+                    alert('Connection lost. Please refresh the page.');
+                }
+            };
+        }
+
+        // ========== SEND MESSAGE ==========
+        
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const content = input.value.trim();
+
+            if (!content || !activeConversation) return;
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                console.error('WebSocket not connected');
+                alert('Connection lost. Please wait while reconnecting...');
+                
+                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                    connectWebSocket();
+                }
+                
+                return;
+            }
+
+            try {
+                ws.send(JSON.stringify({
+                    to: activeConversation,
+                    content: content
+                }));
+
+                displayMessage({
+                    content: content,
+                    created_at: new Date().toISOString()
+                }, true);
+
+                input.value = '';
+
+                markConversationAsRead(activeConversation);
+                
+            } catch (error) {
+                console.error('Send error:', error);
+                alert('Failed to send message. Please try again.');
+            }
+        }
+
+        // ========== USER LIST ==========
+        
+        async function loadUserList() {
+            try {
+                const url = currentTab === 'online' 
+                    ? `${API_URL}/users/online`
+                    : `${API_URL}/users/list?current_username=${encodeURIComponent(currentUser)}`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const users = currentTab === 'online' ? data.online_users : data.users;
+                const userList = document.getElementById('user-list');
+                
+                if (users.length === 0) {
+                    userList.innerHTML = '<div class="empty-state">No users found</div>';
+                    return;
+                }
+                
+                userList.innerHTML = users.map(user => `
+                    <div class="user-item" onclick="startConversation('${user.username}')">
+                        <div class="user-avatar">
+                            ${user.username.charAt(0).toUpperCase()}
+                            <div class="status-indicator ${user.is_online ? 'online' : 'offline'}"></div>
+                        </div>
+                        <div class="user-info-text">
+                            <div class="user-name">${user.username}</div>
+                            <div class="user-status">
+                                ${user.is_online ? 'Online' : `Last seen: ${formatTime(user.last_seen)}`}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        // ========== CONVERSATIONS ==========
+        
+        async function loadConversations() {
+            try {
+                const response = await fetch(
+                    `${API_URL}/dm/conversations?username=${encodeURIComponent(currentUser)}`
+                );
+                const data = await response.json();
+                
+                const conversationList = document.getElementById('conversation-list');
+                
+                if (data.conversations.length === 0) {
+                    conversationList.innerHTML = '<div class="empty-state">No conversations yet</div>';
+                    return;
+                }
+                
+                conversationList.innerHTML = data.conversations.map(conv => `
+                    <div class="conversation-item" onclick="openConversation('${conv.other_user.username}')">
+                        <div class="conversation-header">
+                            <span class="conversation-name">
+                                ${conv.other_user.username}
+                                ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
+                            </span>
+                            <span class="conversation-time">${formatTime(conv.last_message.created_at)}</span>
+                        </div>
+                        <div class="conversation-preview">
+                            ${conv.last_message.is_mine ? 'You: ' : ''}${conv.last_message.content}
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+            }
+        }
+
+        async function markConversationAsRead(otherUsername) {
+            try {
+                const response = await fetch(
+                    `${API_URL}/dm/mark-read-conversation?current_username=${encodeURIComponent(currentUser)}&other_username=${encodeURIComponent(otherUsername)}`,
+                    {
+                        method: 'POST'
+                    }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.count > 0) {
+                        console.log(`✓ Marked ${data.count} messages as read in one operation`);
+                        // Reload conversations to update unread count
+                        loadConversations();
+                    }
+                }
+            } catch (error) {
+                console.error('Error marking conversation as read:', error);
+            }
+        }
+
+        // ========== CHAT ==========
+        
+        async function startConversation(username) {
+            openConversation(username);
+        }
+
+        async function openConversation(otherUser) {
+            activeConversation = otherUser;
+            
+            // Show chat area
+            document.getElementById('chat-placeholder').classList.add('hidden');
+            document.getElementById('chat-content').classList.remove('hidden');
+            
+            // Update header
+            document.getElementById('chat-user-initial').textContent = otherUser.charAt(0).toUpperCase();
+            document.getElementById('chat-user-name').textContent = otherUser;
+            
+            // Enable input
+            document.getElementById('message-input').disabled = false;
+            document.getElementById('send-button').disabled = false;
+            
+            // Load messages
+            try {
+                const response = await fetch(
+                    `${API_URL}/dm/conversation/${encodeURIComponent(otherUser)}?current_username=${encodeURIComponent(currentUser)}`
+                );
+                const data = await response.json();
+                
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                
+                data.messages.forEach(msg => {
+                    displayMessage(msg, msg.is_mine);
+                });
+                
+                scrollToBottom();
+                
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+            }
+            
+            // Reload conversations to update unread count
+            loadConversations();
+        }
+
+        function displayMessage(data, isMine) {
+            const messagesDiv = document.getElementById('messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isMine ? 'mine' : 'theirs'}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    ${data.content}
+                    <div class="message-time">${formatTime(data.created_at)}</div>
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // ========== HELPERS ==========
+        
+        function showTab(tab) {
+            currentTab = tab;
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            loadUserList();
+        }
+
+        async function searchUsers() {
+            const query = document.getElementById('user-search').value.trim();
+            
+            if (!query) {
+                loadUserList();
+                return;
+            }
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/users/search?query=${encodeURIComponent(query)}&current_username=${encodeURIComponent(currentUser)}`
+                );
+                const data = await response.json();
+                
+                const userList = document.getElementById('user-list');
+                
+                if (data.users.length === 0) {
+                    userList.innerHTML = '<div class="empty-state">No users found</div>';
+                    return;
+                }
+                
+                userList.innerHTML = data.users.map(user => `
+                    <div class="user-item" onclick="startConversation('${user.username}')">
+                        <div class="user-avatar">
+                            ${user.username.charAt(0).toUpperCase()}
+                            <div class="status-indicator ${user.is_online ? 'online' : 'offline'}"></div>
+                        </div>
+                        <div class="user-info-text">
+                            <div class="user-name">${user.username}</div>
+                            <div class="user-status">
+                                ${user.is_online ? 'Online' : `Last seen: ${formatTime(user.last_seen)}`}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error searching users:', error);
+            }
+        }
+
+        function updateUserStatus(userId, username, isOnline) {
+            // Update will happen on next loadUserList()
+            console.log(`User ${username} is now ${isOnline ? 'online' : 'offline'}`);
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        function scrollToBottom() {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // ========== EVENT LISTENERS ==========
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('message-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            document.getElementById('username-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') login();
+            });
+        });
+    </script>
+</body>
+</html>
