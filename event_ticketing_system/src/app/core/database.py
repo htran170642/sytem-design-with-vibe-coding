@@ -15,7 +15,7 @@ engine = create_async_engine(
     future=True,
     pool_pre_ping=True,  # Verify connections before using
     pool_size=20,  # Default connection pool size
-    max_overflow=10,  # Max connections beyond pool_size
+    max_overflow=40,  # Max connections beyond pool_size
 )
 
 # Create async session factory

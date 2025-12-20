@@ -182,6 +182,13 @@ Tech Stack Focus:
   - [ ] Redis cluster
   - [ ] Postgres HA (Multi-AZ)
 - [ ] Graceful degradation:
+
+￼
+￼
+￼
+Sonnet 4.5
+￼
+
   - [ ] Read-only mode if DB writes lag
 
 📌 Result: Can handle **10M+ simultaneous users** during global ticket drops.

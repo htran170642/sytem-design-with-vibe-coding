@@ -36,6 +36,7 @@ class WaitingRoomService:
     
     def __init__(self):
         self.redis = redis_client
+        self._workers_running: Dict[int, bool] = {}
     
     async def is_enabled(self, event_id: int) -> bool:
         """Check if waiting room is enabled for event"""
@@ -92,6 +93,9 @@ class WaitingRoomService:
         active_key = f"waiting_room:{event_id}:active"
         active_count = await self.redis.redis.scard(active_key) or 0
         
+        # Get total queue size
+        queue_size = await self.redis.redis.zcard(queue_key) or 0
+        
         # Get config
         config = await self.redis.get(f"waiting_room:{event_id}:config")
         max_concurrent = config.get("max_concurrent_users", 1000) if config else 1000
@@ -112,7 +116,7 @@ class WaitingRoomService:
         estimated_wait = batch_number * session_duration
         
         logger.info(
-            f"User {user_id}: position={position}, active={active_count}, "
+            f"User {user_id}: queue_size={queue_size}, position={position}, active={active_count}, "
             f"slots={slots_available}, batch={batch_number}, wait={estimated_wait}s"
         )
         
@@ -121,64 +125,6 @@ class WaitingRoomService:
             "position": position + 1 if position is not None else 1,
             "estimated_wait_seconds": int(estimated_wait),
             "status": "queued"
-        }
-    
-    async def check_status(self, event_id: int, token: str) -> Dict:
-        """Check user's position in queue"""
-        queue_key = f"waiting_room:{event_id}:queue"
-        active_key = f"waiting_room:{event_id}:active"
-        
-        # Check if already admitted
-        is_active = await self.redis.redis.sismember(active_key, token)
-        if is_active:
-            return {
-                "admitted": True,
-                "status": "active",
-                "message": "You can proceed to book tickets"
-            }
-        
-        # Get current position
-        position = await self.redis.redis.zrank(queue_key, token)
-        if position is None:
-            return {
-                "admitted": False,
-                "status": "not_found",
-                "message": "Token not found in queue"
-            }
-        
-        # Get config
-        config = await self.redis.get(f"waiting_room:{event_id}:config")
-        max_concurrent = config.get("max_concurrent_users", 1000) if config else 1000
-        session_duration = config.get("session_duration_seconds", 300) if config else 300
-        active_count = await self.redis.redis.scard(active_key) or 0
-        
-        # Calculate available slots
-        slots_available = max_concurrent - active_count
-        
-        # Admit user if there are slots AND user is within available range
-        if slots_available > 0 and position < slots_available:
-            await self._admit_user(event_id, token)
-            return {
-                "admitted": True,
-                "status": "admitted",
-                "message": "You can now proceed to book tickets"
-            }
-        
-        # Calculate wait time
-        if position < slots_available:
-            batch_number = 0
-        else:
-            users_after_slots = position - slots_available
-            batch_number = (users_after_slots // max_concurrent) + 1
-        
-        estimated_wait = batch_number * session_duration
-        
-        return {
-            "admitted": False,
-            "status": "waiting",
-            "position": position + 1,
-            "estimated_wait_seconds": int(estimated_wait),
-            "message": f"You are #{position + 1} in queue"
         }
     
     async def _admit_user(self, event_id: int, token: str):
@@ -194,12 +140,20 @@ class WaitingRoomService:
         session_duration = config.get("session_duration_seconds", 300) if config else 300
         
         await self.redis.redis.sadd(active_key, token)
+        
+        # actively set expiry on active set membership
         await self.redis.redis.expire(active_key, session_duration)
         
-        logger.info(f"✅ User admitted to event {event_id} with token {token}")
+        logger.info(f"✅ User admitted to event {event_id} with token {token} with TTL {session_duration}")
     
     async def get_stats(self, event_id: int) -> Dict:
         """Get waiting room statistics"""
+        
+        # ✅ Check if waiting room is enabled first
+        is_enabled = await self.is_enabled(event_id)
+        if not is_enabled:
+            return None
+
         queue_key = f"waiting_room:{event_id}:queue"
         active_key = f"waiting_room:{event_id}:active"
         
@@ -216,6 +170,97 @@ class WaitingRoomService:
             "max_concurrent": max_concurrent,
             "slots_available": max(0, max_concurrent - active_count)
         }
+                
+    async def _process_queue(self, event_id: int):
+        """
+        Automatically admit users from queue when slots available
+        """
+        queue_key = f"waiting_room:{event_id}:queue"
+        active_key = f"waiting_room:{event_id}:active"
+        
+        # Get config
+        config = await self.redis.get(f"waiting_room:{event_id}:config")
+        if not config:
+            logger.warning(f"No waiting room config found for event {event_id}")
+            return
+        
+        max_concurrent = config.get("max_concurrent_users", 1000)
+        
+        # Get current active count
+        active_count = await self.redis.redis.scard(active_key) or 0
+        
+        # Calculate how many we can admit
+        
+        slots_available = max_concurrent - active_count
+        
+        if slots_available <= 0:
+            logger.info(f"No slots available for event {event_id}, max_concurrent={max_concurrent}, active={active_count}")
+            return  # No slots, nothing to do
+        
+        # Get next N users from queue
+        tokens_to_admit = await self.redis.redis.zrange(
+            queue_key, 
+            0, 
+            slots_available - 1  # Get first N tokens
+        )
+        
+        if not tokens_to_admit:
+            logger.info(f"No users in queue to admit for event {event_id}")
+            return  # Queue empty
+        
+        logger.info(f"🎫 Auto-admitting {len(tokens_to_admit)} users to event {event_id}")
+        
+        # Admit each user
+        for token in tokens_to_admit:
+            await self._admit_user(event_id, token)
+            
+            # ✅ Notify via WebSocket
+            from app.services.websocket_manager import manager
+            await manager.send_admission_notification(event_id, token)
+            
+    async def start_auto_admission_worker(self, event_id: int):
+        """
+        Background worker that automatically admits users when slots available
+        Runs every 5 seconds
+        """
+        worker_key = f"auto_admission_worker_{event_id}"
+        
+        if self._workers_running.get(event_id, False):
+            logger.warning(f"Auto-admission worker already running for event {event_id}")
+            return
+        
+        self._workers_running[event_id] = True
+        logger.info(f"🚀 Starting auto-admission worker for event {event_id}")
+        
+        await asyncio.sleep(5)
+
+        try:
+            while self._workers_running.get(event_id, False):
+                try:
+                    # Check if waiting room is still enabled
+                    is_enabled = await self.is_enabled(event_id)
+                    if not is_enabled:
+                        logger.info(f"Waiting room disabled for event {event_id}, stopping worker")
+                        break
+                    
+                    # Process queue
+                    await self._process_queue(event_id)
+
+                    # Wait 5 seconds before next check
+                    await asyncio.sleep(5)
+                    
+                except Exception as e:
+                    logger.error(f"Error in auto-admission worker for event {event_id}: {e}")
+                    await asyncio.sleep(5)  # Continue after error
+                    
+        finally:
+            self._workers_running[event_id] = False
+            logger.info(f"🛑 Auto-admission worker stopped for event {event_id}")
+    
+    def stop_auto_admission_worker(self, event_id: int):
+        """Stop auto-admission worker for an event"""
+        self._workers_running[event_id] = False
+        logger.info(f"🛑 Stopping auto-admission worker for event {event_id}")
 
 
 # Global instance

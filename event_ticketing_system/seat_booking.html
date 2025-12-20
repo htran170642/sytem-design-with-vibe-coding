@@ -437,9 +437,126 @@
                 position: static;
             }
         }
+
+        /* ===== WAITING ROOM STYLES ===== */
+        .waiting-room-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .waiting-room-overlay.active {
+            display: flex;
+        }
+
+        .waiting-room-content {
+            background: white;
+            padding: 60px 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .waiting-room-content h2 {
+            font-size: 2.5em;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .waiting-room-content .icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .queue-position {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 60px;
+            border-radius: 20px;
+            margin: 30px 0;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .queue-position .position-number {
+            font-size: 5em;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .queue-position .label {
+            font-size: 1.3em;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .wait-time {
+            font-size: 1.5em;
+            color: #666;
+            margin: 20px 0;
+        }
+
+        .wait-time strong {
+            color: #667eea;
+            font-size: 1.3em;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 30px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
+    <!-- Waiting Room Overlay -->
+    <div id="waiting-room-overlay" class="waiting-room-overlay">
+        <div class="waiting-room-content">
+            <div class="icon" id="wr-icon">⏳</div>
+            <h2 id="wr-title">You're in the Waiting Room</h2>
+            
+            <div class="queue-position">
+                <div class="label">Your Position</div>
+                <div class="position-number" id="wr-position">-</div>
+                <div class="label">In Queue</div>
+            </div>
+
+            <div class="wait-time">
+                Estimated wait: <strong id="wr-wait">Calculating...</strong>
+            </div>
+
+            <div class="spinner" id="wr-spinner"></div>
+
+            <p style="color: #999; margin-top: 20px;">
+                Please keep this page open. You'll be automatically redirected when it's your turn.
+            </p>
+        </div>
+    </div>
+
     <div class="header">
         <div class="header-content">
             <h1>🎫 Book Your Seats</h1>
@@ -573,6 +690,8 @@
         let currentBooking = null;
         let timerInterval = null;
         let ws = null;
+        let waitingRoomToken = null;
+        let pollInterval = null;
         
         // Initialize
         async function init() {
@@ -584,8 +703,7 @@
             }
             
             await loadEvent();
-            await loadSeats();
-            connectWebSocket();
+            await checkWaitingRoom();
         }
         
         // Load event details
@@ -607,11 +725,210 @@
             }
         }
         
+        // Check if waiting room is enabled
+        async function checkWaitingRoom() {
+            console.log('🔍 Checking if waiting room is enabled...');
+            
+            try {
+                const response = await fetch(`${API_URL}/events/${eventId}/waiting-room/stats`);
+                
+                if (!response.ok) {
+                    console.log('⚠️ Waiting room check failed, loading seats directly');
+                    await loadSeats();
+                    connectWebSocket();
+                    return;
+                }
+                
+                const stats = await response.json();
+                console.log('📊 Waiting room stats:', stats);
+                
+                // If stats exist and have queue_size property, waiting room is enabled
+                if (stats && stats.queue_size !== undefined) {
+                    console.log('🚪 Waiting room is enabled');
+                    await joinWaitingRoom();
+                    return;
+                }
+                
+                // No waiting room or disabled
+                console.log('✅ No waiting room, loading seats directly');
+                await loadSeats();
+                connectWebSocket();
+                
+            } catch (error) {
+                console.error('❌ Error checking waiting room:', error);
+                console.log('⚠️ Falling back to direct seat loading');
+                
+                // Fallback: load seats directly
+                await loadSeats();
+                connectWebSocket();
+            }
+        }
+
+        // Join waiting room
+        async function joinWaitingRoom() {
+            const userId = document.getElementById('user-id').value;
+            
+            console.log(`👤 Joining waiting room as user ${userId}...`);
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/events/${eventId}/waiting-room/join?user_id=${userId}`,
+                    { method: 'POST' }
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                waitingRoomToken = data.token;
+                
+                console.log('✅ Joined queue:', {
+                    token: waitingRoomToken.substring(0, 8) + '...',
+                    position: data.position,
+                    estimated_wait: data.estimated_wait_seconds
+                });
+                
+                // Show waiting room overlay
+                document.getElementById('waiting-room-overlay').classList.add('active');
+                
+                // Update UI with queue info
+                updateWaitingRoomUI(data);
+                
+                // ✅ Connect WebSocket to listen for admission
+                connectWaitingRoomWebSocket();
+                
+            } catch (error) {
+                console.error('❌ Error joining waiting room:', error);
+                alert('Failed to join waiting room. Loading seats directly...');
+                
+                // Fallback
+                await loadSeats();
+                connectWebSocket();
+            }
+        }
+
+        // Connect WebSocket for waiting room
+        function connectWaitingRoomWebSocket() {
+            ws = new WebSocket(`${WS_URL}/events/${eventId}`);
+            
+            ws.onopen = () => {
+                console.log('🔌 Waiting room WebSocket connected');
+                
+                // ✅ Register token with server
+                ws.send(JSON.stringify({
+                    type: 'register_waiting_room',
+                    token: waitingRoomToken
+                }));
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📨 WebSocket message:', data);
+                
+                // ✅ Handle admission (most important!)
+                if (data.type === 'admitted' && data.token === waitingRoomToken) {
+                    console.log('🎉 Admitted via WebSocket!');
+                    handleAdmission();
+                }
+                
+                // ✅ Handle position updates pushed by server
+                if (data.type === 'position_update' && data.token === waitingRoomToken) {
+                    console.log(`📊 Position update: ${data.position}`);
+                    updateWaitingRoomUI({
+                        position: data.position,
+                        estimated_wait_seconds: data.estimated_wait_seconds
+                    });
+                }
+                
+                // ✅ Handle registration confirmation
+                if (data.type === 'registration_confirmed') {
+                    console.log('✅ Token registered with server');
+                }
+                
+                // Handle other messages
+                if (data.type === 'connected') {
+                    console.log('✅ WebSocket:', data.message);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                console.log('🔌 WebSocket disconnected, reconnecting...');
+                setTimeout(connectWaitingRoomWebSocket, 5000);
+            };
+        }
+
+        // Handle admission
+        async function handleAdmission() {
+            
+            // Show success state
+            document.getElementById('wr-title').textContent = '🎉 You\'re In!';
+            document.getElementById('wr-icon').textContent = '✅';
+            document.getElementById('wr-spinner').style.display = 'none';
+            
+            // Wait 2 seconds then load seats
+            setTimeout(async () => {
+                document.getElementById('waiting-room-overlay').classList.remove('active');
+                await loadSeats();
+            }, 2000);
+        }
+
+        // Update waiting room UI
+        function updateWaitingRoomUI(data) {
+            document.getElementById('wr-position').textContent = data.position || '-';
+            
+            const waitSeconds = data.estimated_wait_seconds || 0;
+            const waitMinutes = Math.floor(waitSeconds / 60);
+            const waitSecs = waitSeconds % 60;
+            
+            if (waitSeconds === 0) {
+                document.getElementById('wr-wait').textContent = 'Any moment now!';
+            } else if (waitMinutes > 0) {
+                document.getElementById('wr-wait').textContent = `${waitMinutes}m ${waitSecs}s`;
+            } else {
+                document.getElementById('wr-wait').textContent = `${waitSecs}s`;
+            }
+        }
+        
         // Load seat map
         async function loadSeats() {
             console.log('Loading seats for event', eventId);
+            
             try {
-                const response = await fetch(`${API_URL}/events/${eventId}/seats`);
+                const timestamp = Date.now();
+                let url = `${API_URL}/events/${eventId}/seats?_=${timestamp}`;
+                
+                // ✅ Add waiting room token if we have one
+                if (waitingRoomToken) {
+                    url += `&wr_token=${waitingRoomToken}`;
+                    console.log('✅ Adding waiting room token to request');
+                }
+                
+                const response = await fetch(url);
+                
+                // ✅ Check for waiting room requirement BEFORE reading body
+                if (response.status === 403) {
+                    const error = await response.json();
+                    console.error('❌ 403 Forbidden:', error);
+                    
+                    if (error.detail && error.detail.error === 'waiting_room_required') {
+                        console.log('🚪 Waiting room required, joining queue...');
+                        await joinWaitingRoom();
+                        return;
+                    }
+                    
+                    alert('Access denied: ' + (error.detail?.message || 'Unknown error'));
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
                 
                 seatsData = {};
@@ -620,8 +937,11 @@
                 });
                 
                 renderSeatMap(data.sections);
+                console.log('✅ Seats loaded successfully');
+                
             } catch (error) {
-                console.error('Error loading seats:', error);
+                console.error('❌ Error loading seats:', error);
+                alert('Failed to load seats: ' + error.message);
             }
         }
         
@@ -733,9 +1053,17 @@
                 
                 console.log('Creating booking with seats:', seatIds);
                 
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+
+                if (waitingRoomToken) {
+                    headers['X-Waiting-Room-Token'] = waitingRoomToken;
+                }
+
                 const response = await fetch(`${API_URL}/bookings?user_id=${userId}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({
                         event_id: Number(eventId),
                         seat_ids: seatIds
@@ -751,18 +1079,14 @@
                 currentBooking = await response.json();
                 console.log('✅ Booking created:', currentBooking);
                 
-                // Show booking info
                 const bookingInfoEl = document.getElementById('booking-info');
                 if (bookingInfoEl) {
                     bookingInfoEl.style.display = 'block';
                     document.getElementById('display-booking-id').textContent = `#${currentBooking.id}`;
                     document.getElementById('display-user-id').textContent = currentBooking.user_id;
                     document.getElementById('display-status').textContent = currentBooking.status;
-                } else {
-                    console.error('❌ booking-info element not found!');
                 }
                 
-                // Update seats list from API response
                 const list = document.getElementById('selected-seats-list');
                 if (list && currentBooking.seats && currentBooking.seats.length > 0) {
                     list.innerHTML = currentBooking.seats.map(seat => `
@@ -771,26 +1095,17 @@
                             <span class="seat-price">$${Number(seat.price_at_booking).toFixed(2)}</span>
                         </div>
                     `).join('');
-                    console.log('✅ Displayed', currentBooking.seats.length, 'seats');
-                } else {
-                    console.error('❌ No seats in booking response!');
                 }
                 
-                // Update total
                 document.getElementById('total-amount').textContent = `$${Number(currentBooking.total_amount).toFixed(2)}`;
-                console.log('✅ Total:', currentBooking.total_amount);
                 
-                // Show/hide UI elements
                 document.getElementById('booking-timer').style.display = 'block';
                 document.getElementById('user-input-section').style.display = 'none';
                 document.getElementById('hold-btn').style.display = 'none';
                 document.getElementById('confirm-btn').style.display = 'block';
                 document.getElementById('cancel-btn').style.display = 'block';
                 
-                // Start timer
                 startTimer(currentBooking.time_remaining_seconds);
-                
-                // Clear selection and reload seat map
                 selectedSeats = [];
                 
             } catch (error) {
@@ -819,9 +1134,6 @@
                     return;
                 }
                 
-                const confirmedBooking = await response.json();
-                
-                // Update status
                 document.getElementById('display-status').textContent = 'CONFIRMED';
                 document.getElementById('display-status').style.color = '#10b981';
                 
@@ -852,7 +1164,6 @@
                 stopTimer();
                 currentBooking = null;
                 
-                // Reset UI
                 document.getElementById('booking-info').style.display = 'none';
                 document.getElementById('booking-timer').style.display = 'none';
                 document.getElementById('user-input-section').style.display = 'block';
@@ -860,7 +1171,6 @@
                 document.getElementById('confirm-btn').style.display = 'none';
                 document.getElementById('cancel-btn').style.display = 'none';
                 
-                // Reset seats list
                 document.getElementById('selected-seats-list').innerHTML = '<p style="color: #999; text-align: center;">No seats selected</p>';
                 document.getElementById('total-amount').textContent = '$0.00';
                 
@@ -881,7 +1191,6 @@
                 
                 if (remaining <= 0) {
                     stopTimer();
-                    console.log('💥 Booking expired, reloading page.');
                     alert('Booking expired! Seats have been released.');
                     window.location.reload();
                 }
@@ -900,68 +1209,57 @@
             }
         }
         
-        // WebSocket connection
+        // WebSocket connection for seat updates
         function connectWebSocket() {
+            // Don't reconnect if already connected from waiting room
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('✅ WebSocket already connected');
+                document.getElementById('connection-status').className = 'connection-status connected';
+                document.getElementById('connection-status').textContent = '🟢 Real-time updates active';
+                return;
+            }
+            
             ws = new WebSocket(`${WS_URL}/events/${eventId}`);
             
             ws.onopen = () => {
-                console.log('WebSocket connected');
+                console.log('✅ WebSocket connected for seat updates');
                 document.getElementById('connection-status').className = 'connection-status connected';
                 document.getElementById('connection-status').textContent = '🟢 Real-time updates active';
             };
             
             ws.onmessage = async (event) => {
                 const data = JSON.parse(event.data);
-                console.log('📨 WebSocket message:', data);
                 
                 if (data.type === 'seat_update') {
                     console.log(`🔄 Seats ${data.seat_ids} → ${data.status}`);
                     
-                    // ✅ Step 1: Immediately update seat visuals (instant feedback)
                     data.seat_ids.forEach(seatId => {
                         const seatElement = document.querySelector(`[data-seat-id="${seatId}"]`);
                         if (seatElement) {
-                            // Remove all status classes
                             seatElement.classList.remove('available', 'hold', 'booked', 'selected');
-                            // Add new status class
                             seatElement.classList.add(data.status.toLowerCase());
-                            // Update data attribute
                             seatElement.dataset.seatStatus = data.status;
-                            console.log(`✅ Updated seat ${seatId} visual to ${data.status}`);
                         }
                     });
                     
-                    // ✅ Step 2: Reload from server to confirm
                     await loadSeats();
                 }
                 
                 if (data.type === 'booking_expired') {
-                    console.log(`⏰ Booking ${data.booking_id} expired, releasing seats:`, data.seat_ids);
+                    console.log(`⏰ Booking ${data.booking_id} expired`);
                     
-                    // ✅ Step 1: Immediately update seat visuals to AVAILABLE
                     data.seat_ids.forEach(seatId => {
                         const seatElement = document.querySelector(`[data-seat-id="${seatId}"]`);
                         if (seatElement) {
-                            console.log(`🔄 Changing seat ${seatId} from ${seatElement.className} to available`);
-                            // Remove all status classes
                             seatElement.classList.remove('available', 'hold', 'booked', 'selected');
-                            // Add available class
                             seatElement.classList.add('available');
-                            // Update data attribute
                             seatElement.dataset.seatStatus = 'AVAILABLE';
-                            console.log(`✅ Seat ${seatId} is now: ${seatElement.className}`);
-                        } else {
-                            console.error(`❌ Seat ${seatId} not found in DOM!`);
                         }
                     });
                     
-                    // ✅ Step 2: Reload seat map from server
-                    console.log('🔄 Reloading seat map from server...');
                     await loadSeats();
                     
-                    // ✅ Step 3: If it's our booking, reset UI
                     if (currentBooking && data.booking_id === currentBooking.id) {
-                        console.log('💥 Our booking expired!');
                         stopTimer();
                         currentBooking = null;
                         
@@ -977,21 +1275,17 @@
                         document.getElementById('total-amount').textContent = '$0.00';
                     }
                 }
-                
-                if (data.type === 'connected') {
-                    console.log('✅ WebSocket:', data.message);
-                }
             };
             
             ws.onclose = () => {
-                console.log('WebSocket disconnected');
+                console.log('❌ WebSocket disconnected');
                 document.getElementById('connection-status').className = 'connection-status disconnected';
                 document.getElementById('connection-status').textContent = '🔴 Real-time updates disconnected';
                 setTimeout(connectWebSocket, 5000);
             };
             
             ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.error('❌ WebSocket error:', error);
             };
         }
         
@@ -1008,14 +1302,13 @@
             });
         }
         
-        // Initialize on load
-        init();
-        
-        // Cleanup on unload
         window.addEventListener('beforeunload', () => {
             if (ws) ws.close();
             stopTimer();
         });
+        
+        // Initialize
+        init();
     </script>
 </body>
 </html>

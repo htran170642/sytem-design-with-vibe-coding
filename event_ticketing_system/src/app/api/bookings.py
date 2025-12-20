@@ -26,6 +26,10 @@ from app.middleware.anti_bot import anti_bot
 from app.middleware.waiting_room_guard import check_waiting_room_access
 from app.services.idempotency import idempotency_service
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -107,19 +111,31 @@ async def create_booking(
         
         return response
         
-    except EventNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     except SeatsUnavailableError as e:
+        logger.info(f"Seats unavailable for user {user_id}: {str(e)}")
         raise HTTPException(status_code=409, detail=str(e))
+    
+    except EventNotFoundError as e:
+        logger.warning(f"Event not found for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    
     except TooManyActiveHoldsError as e:
+        logger.warning(f"Too many active holds for user {user_id}: {str(e)}")
         raise HTTPException(status_code=429, detail=str(e))
+    
     except BookingServiceError as e:
+        logger.error(f"Booking error for user {user_id}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        await idempotency_service.release_lock(idempotency_key)
-
+        logger.error(
+            f"Unexpected error creating booking for user {user_id}: {type(e).__name__}: {str(e)}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {type(e).__name__}: {str(e)}"
+        )
 
 @router.post("/bookings/{booking_id}/confirm", response_model=BookingResponse)
 @limiter.limit("10/minute")  # ✅ ADD THIS

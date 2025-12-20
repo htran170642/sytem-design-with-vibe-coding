@@ -13,6 +13,10 @@ from app.models.booking import BookingStatus
 from app.models.event_seat import SeatStatus
 from app.services.websocket_manager import manager
 from app.services.cache_service import CacheService
+from asyncpg.exceptions import LockNotAvailableError
+from sqlalchemy.exc import IntegrityError, OperationalError, DBAPIError
+
+from app.core.logging_config import get_trace_id
 import logging
 
 logger = logging.getLogger(__name__)
@@ -66,6 +70,13 @@ class BookingService:
         - Deletes event:{event_id}:availability
         """
         
+        trace_id = get_trace_id()
+        
+        logger.info(
+            f"Creating booking for user {user_id}, event {event_id}, seats {seat_ids}",
+            extra={'user_id': user_id, 'event_id': event_id}
+        )
+        
         if len(seat_ids) == 0:
             raise BookingServiceError("At least one seat must be selected")
         
@@ -74,112 +85,166 @@ class BookingService:
                 f"Cannot book more than {settings.MAX_SEATS_PER_BOOKING} seats at once"
             )
         
-        async with db.begin():
-            # 1. Verify event exists and is active
-            event_query = select(Event).where(
-                Event.id == event_id,
-                Event.is_active == True
-            )
-            event_result = await db.execute(event_query)
-            event = event_result.scalar_one_or_none()
-            
-            if not event:
-                raise EventNotFoundError(f"Event {event_id} not found or inactive")
-            
-            # 2. Check user's active holds
-            active_holds_query = select(func.count(Booking.id)).where(
-                Booking.user_id == user_id,
-                Booking.status == BookingStatus.HOLD
-            )
-            active_holds_result = await db.execute(active_holds_query)
-            active_holds_count = active_holds_result.scalar()
-            
-            if active_holds_count >= settings.MAX_ACTIVE_HOLDS_PER_USER:
-                raise TooManyActiveHoldsError(
-                    f"Cannot have more than {settings.MAX_ACTIVE_HOLDS_PER_USER} active holds"
+        try:
+            async with db.begin():
+                # 1. Verify event exists and is active
+                event_query = select(Event).where(
+                    Event.id == event_id,
+                    Event.is_active == True
                 )
-            
-            # 3. Lock seats with FOR UPDATE NOWAIT
-            seats_query = (
-                select(EventSeat)
-                .where(EventSeat.id.in_(seat_ids))
-                .where(EventSeat.event_id == event_id)
-                .where(EventSeat.status == SeatStatus.AVAILABLE)
-                .with_for_update(nowait=True)
-            )
-            
-            try:
+                event_result = await db.execute(event_query)
+                event = event_result.scalar_one_or_none()
+                
+                if not event:
+                    raise EventNotFoundError(f"Event {event_id} not found or inactive")
+                
+                # 2. Check user's active holds
+                active_holds_query = select(func.count(Booking.id)).where(
+                    Booking.user_id == user_id,
+                    Booking.status == BookingStatus.HOLD
+                )
+                active_holds_result = await db.execute(active_holds_query)
+                active_holds_count = active_holds_result.scalar()
+                
+                if active_holds_count >= settings.MAX_ACTIVE_HOLDS_PER_USER:
+                    raise TooManyActiveHoldsError(
+                        f"Cannot have more than {settings.MAX_ACTIVE_HOLDS_PER_USER} active holds"
+                    )
+                
+                # 3. ✅ Lock seats with FOR UPDATE NOWAIT (catch lock errors)
+                seats_query = (
+                    select(EventSeat)
+                    .where(EventSeat.id.in_(seat_ids))
+                    .where(EventSeat.event_id == event_id)
+                    .where(EventSeat.status == SeatStatus.AVAILABLE)
+                    .with_for_update(nowait=True)
+                )
+                
                 seats_result = await db.execute(seats_query)
                 seats = seats_result.scalars().all()
-            except Exception:
-                raise SeatsUnavailableError(
-                    "One or more seats are being booked by another user"
+                
+                # 4. Validate we got all requested seats
+                if len(seats) != len(seat_ids):
+                    unavailable_ids = set(seat_ids) - {seat.id for seat in seats}
+                    raise SeatsUnavailableError(
+                        f"Seats {unavailable_ids} are not available"
+                    )
+                
+                # 5. Calculate total amount
+                total_amount = sum(seat.price for seat in seats)
+                
+                # 6. Create booking record
+                booking = Booking(
+                    user_id=user_id,
+                    event_id=event_id,
+                    status=BookingStatus.HOLD,
+                    total_amount=total_amount,
+                    hold_expires_at=datetime.utcnow() + timedelta(
+                        minutes=settings.HOLD_DURATION_MINUTES
+                    )
                 )
+                db.add(booking)
+                await db.flush()
+                
+                # 7. Update seat statuses
+                for seat in seats:
+                    seat.status = SeatStatus.HOLD
+                    seat.current_booking_id = booking.id
+                
+                # 8. Create booking_seats records
+                for seat in seats:
+                    booking_seat = BookingSeat(
+                        booking_id=booking.id,
+                        seat_id=seat.id,
+                        price_at_booking=seat.price
+                    )
+                    db.add(booking_seat)
+                
+                # 9. Update event available_seats counter
+                event.available_seats -= len(seats)
+                
+                await db.commit()
             
-            # 4. Validate we got all requested seats
-            if len(seats) != len(seat_ids):
-                unavailable_ids = set(seat_ids) - {seat.id for seat in seats}
-                raise SeatsUnavailableError(
-                    f"Seats {unavailable_ids} are not available"
-                )
+            # 10. ✅ Invalidate cache
+            logger.info(f"🗑️ Invalidating cache for event {event_id} after HOLD booking")
+            await CacheService.invalidate_event_seats(event_id)
             
-            # 5. Calculate total amount
-            total_amount = sum(seat.price for seat in seats)
-            
-            # 6. Create booking record
-            booking = Booking(
-                user_id=user_id,
+            # 11. Broadcast WebSocket update
+            await manager.broadcast_seat_update(
                 event_id=event_id,
-                status=BookingStatus.HOLD,
-                total_amount=total_amount,
-                hold_expires_at=datetime.utcnow() + timedelta(
-                    minutes=settings.HOLD_DURATION_MINUTES
+                seat_ids=seat_ids,
+                status="HOLD",
+                booking_id=booking.id
+            )
+            
+            # 12. Load relationships and return
+            query = (
+                select(Booking)
+                .where(Booking.id == booking.id)
+                .options(
+                    selectinload(Booking.booking_seats).selectinload(BookingSeat.seat)
                 )
             )
-            db.add(booking)
-            await db.flush()
+            result = await db.execute(query)
             
-            # 7. Update seat statuses
-            for seat in seats:
-                seat.status = SeatStatus.HOLD
-                seat.current_booking_id = booking.id
-            
-            # 8. Create booking_seats records
-            for seat in seats:
-                booking_seat = BookingSeat(
-                    booking_id=booking.id,
-                    seat_id=seat.id,
-                    price_at_booking=seat.price
-                )
-                db.add(booking_seat)
-            
-            # 9. Update event available_seats counter
-            event.available_seats -= len(seats)
-            
-            await db.commit()
-        
-        # 10. ✅ Invalidate cache
-        logger.info(f"🗑️ Invalidating cache for event {event_id} after HOLD booking")
-        await CacheService.invalidate_event_seats(event_id)
-        
-        # 11. Broadcast WebSocket update
-        await manager.broadcast_seat_update(
-            event_id=event_id,
-            seat_ids=seat_ids,
-            new_status="HOLD",
-            booking_id=booking.id
-        )
-        
-        # 12. Load relationships and return
-        query = (
-            select(Booking)
-            .where(Booking.id == booking.id)
-            .options(
-                selectinload(Booking.booking_seats).selectinload(BookingSeat.seat)
+            logger.info(
+                f"✅ Booking {booking.id} created successfully",
+                extra={'booking_id': booking.id, 'user_id': user_id}
             )
-        )
-        result = await db.execute(query)
-        return result.scalar_one()
+            
+            return result.scalar_one()
+        
+        except DBAPIError as e:
+            await db.rollback()
+            
+            error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+            
+            # Check if it's a lock error
+            if 'LockNotAvailableError' in str(type(e.orig)) or 'could not obtain lock' in error_str.lower():
+                logger.info(
+                    f"Lock error for user {user_id}: Seats being booked by another user",
+                    extra={'user_id': user_id, 'event_id': event_id}
+                )
+                raise SeatsUnavailableError(
+                    "Seats are being booked by another user. Please try again."
+                )
+            else:
+                # Other DBAPI errors
+                logger.error(
+                    f"DBAPIError creating booking: {error_str}",
+                    extra={'user_id': user_id, 'event_id': event_id},
+                    exc_info=True
+                )
+                raise BookingServiceError(f"Database error: {error_str}")
+        
+        except IntegrityError as e:
+            await db.rollback()
+            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            logger.error(
+                f"IntegrityError creating booking: {error_msg}",
+                extra={'user_id': user_id, 'event_id': event_id},
+                exc_info=True
+            )
+            
+            if "duplicate key" in error_msg.lower():
+                raise SeatsUnavailableError("Seats already booked (race condition)")
+            elif "foreign key" in error_msg.lower():
+                raise BookingServiceError("Invalid seat or event reference")
+            else:
+                raise BookingServiceError(f"Database constraint error: {error_msg}")
+        
+        except (SeatsUnavailableError, EventNotFoundError, TooManyActiveHoldsError) as e:
+            await db.rollback()
+            raise
+        
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                f"Unexpected error creating booking: {type(e).__name__}: {str(e)}",
+                extra={'user_id': user_id, 'event_id': event_id},
+                exc_info=True
+            )
+            raise BookingServiceError(f"Failed to create booking: {str(e)}")
     
     @staticmethod
     async def confirm_booking(
@@ -248,7 +313,7 @@ class BookingService:
         await manager.broadcast_seat_update(
             event_id=booking.event_id,
             seat_ids=seat_ids,
-            new_status="BOOKED",
+            status="BOOKED",
             booking_id=booking_id
         )
         
@@ -324,7 +389,7 @@ class BookingService:
         await manager.broadcast_seat_update(
             event_id=booking.event_id,
             seat_ids=seat_ids,
-            new_status="AVAILABLE",
+            status="AVAILABLE",
             booking_id=booking_id
         )
         

@@ -1,86 +1,41 @@
 """
-WebSocket API for real-time seat updates
+WebSocket endpoint for real-time updates
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from typing import Optional
+import json
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.services.websocket_manager import manager
+import logging
 
-from app.services import manager
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.websocket("/events/{event_id}")
-async def websocket_event_seats(
-    websocket: WebSocket,
-    event_id: int,
-    user_id: Optional[int] = Query(None, description="User ID (optional)")
-):
+async def websocket_endpoint(websocket: WebSocket, event_id: int):
     """
-    WebSocket endpoint for real-time seat updates
-    
-    **Connection URL**: ws://localhost:8000/ws/events/{event_id}
-    
-    **What you receive:**
-    - Real-time seat status changes (AVAILABLE, HOLD, BOOKED)
-    - Booking expiration notifications
-    - Other users' booking activities
-    
-    **Message format:**
-```json
-    {
-        "type": "seat_update",
-        "event_id": 1,
-        "seat_ids": [1, 2, 3],
-        "status": "HOLD",
-        "booking_id": 42,
-        "timestamp": 1702345678.123
-    }
-```
-    
-    Or for expiry:
-```json
-    {
-        "type": "booking_expired",
-        "event_id": 1,
-        "booking_id": 42,
-        "seat_ids": [1, 2, 3],
-        "timestamp": 1702345678.123
-    }
-```
+    WebSocket endpoint for real-time event updates
     """
-    # Accept connection
     await manager.connect(websocket, event_id)
     
+    # Send welcome message
+    await websocket.send_json({
+        "type": "connected",
+        "event_id": event_id,
+        "message": f"Connected to event {event_id} updates"
+    })
+    
     try:
-        # Send welcome message
-        await manager.send_personal_message(
-            {
-                "type": "connected",
-                "event_id": event_id,
-                "message": f"Connected to event {event_id} updates",
-                "user_id": user_id
-            },
-            websocket
-        )
-        
-        # Keep connection alive and listen for messages
         while True:
-            # Receive messages from client (if any)
+            # ✅ Receive and handle messages from client
             data = await websocket.receive_text()
             
-            # Echo back for now (can add ping/pong logic)
-            await manager.send_personal_message(
-                {
-                    "type": "echo",
-                    "data": data
-                },
-                websocket
-            )
-            print(f"↩️ Echoed message to client on event {event_id}: {data}")
-            
+            try:
+                message = json.loads(data)
+                logger.info(f"📨 Received message: {message}")
+                await manager.handle_message(websocket, event_id, message)
+            except json.JSONDecodeError:
+                logger.warning("Invalid JSON received")
+                
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        print(f"Client disconnected from event {event_id}")
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
+        manager.disconnect(websocket, event_id)
+        logger.info(f"Client disconnected from event {event_id}")

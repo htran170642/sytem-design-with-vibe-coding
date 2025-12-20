@@ -13,6 +13,7 @@ from app.core.database import engine
 from app.core.redis import redis_client
 from app.api import events, bookings, websocket, cache, waiting_room
 from app.services import start_expiry_worker, stop_expiry_worker
+from app.services.background_tasks import task_manager
 from app.middleware.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🛑 Shutting down...")
+    await task_manager.shutdown_all()
     await stop_expiry_worker()
     await redis_client.close()
     await engine.dispose()

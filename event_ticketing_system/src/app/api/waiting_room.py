@@ -5,6 +5,8 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 from app.services.waiting_room import waiting_room_service
+from app.services.background_tasks import task_manager
+
 from app.core.config import settings
 
 router = APIRouter()
@@ -30,6 +32,14 @@ async def enable_waiting_room(
         session_duration=session_duration
     )
     
+    # ✅ Start auto-admission worker
+    task_name = f"waiting_room_worker_{event_id}"
+    task_manager.start_task(
+        task_name,
+        waiting_room_service.start_auto_admission_worker,
+        event_id
+    )
+    
     return {
         "message": f"Waiting room enabled for event {event_id}",
         "max_concurrent_users": max_concurrent,
@@ -41,7 +51,7 @@ async def enable_waiting_room(
 async def disable_waiting_room(event_id: int):
     """Disable waiting room for an event"""
     await waiting_room_service.disable_waiting_room(event_id)
-    
+    waiting_room_service.stop_auto_admission_worker(event_id)
     return {
         "message": f"Waiting room disabled for event {event_id}"
     }
