@@ -1,0 +1,117 @@
+.PHONY: help venv install install-dev setup clean test lint format run-ingestion run-query docker-up docker-down
+
+help:
+	@echo "Available commands:"
+	@echo "  make venv           - Create virtual environment"
+	@echo "  make install        - Install production dependencies"
+	@echo "  make install-dev    - Install development dependencies"
+	@echo "  make setup          - Full setup (venv + deps + hooks)"
+	@echo "  make verify         - Verify project setup"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make clean-all      - Clean everything including venv"
+	@echo "  make test           - Run tests"
+	@echo "  make lint           - Run linters"
+	@echo "  make format         - Format code"
+	@echo "  make run-ingestion  - Run ingestion service"
+	@echo "  make run-query      - Run query service"
+	@echo "  make docker-up      - Start all services with docker-compose"
+	@echo "  make docker-down    - Stop all services"
+
+venv:
+	@echo "Creating virtual environment..."
+	python3 -m venv venv
+	@echo ""
+	@echo "Virtual environment created! Activate it with:"
+	@echo "  source venv/bin/activate    (Linux/Mac)"
+	@echo "  venv\\Scripts\\activate      (Windows)"
+	@echo ""
+
+install:
+	@if [ -z "$$VIRTUAL_ENV" ]; then \
+		echo "⚠️  Warning: No virtual environment detected!"; \
+		echo "It's recommended to use a virtual environment."; \
+		echo "Run: make venv && source venv/bin/activate"; \
+		echo ""; \
+	fi
+	pip install -e .
+
+install-dev:
+	@if [ -z "$$VIRTUAL_ENV" ]; then \
+		echo "⚠️  Warning: No virtual environment detected!"; \
+		echo "It's recommended to use a virtual environment."; \
+		echo "Run: make venv && source venv/bin/activate"; \
+		echo ""; \
+	fi
+	pip install -e ".[dev]"
+
+setup: install-dev
+	pre-commit install
+	cp .env.example .env
+	@echo "Setup complete! Edit .env with your configuration."
+
+setup-full: venv
+	@echo "Activating venv and installing dependencies..."
+	@echo "Please run these commands manually:"
+	@echo "  source venv/bin/activate"
+	@echo "  make install-dev"
+	@echo "  make setup"
+
+verify:
+	python scripts/verify_setup.py
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete
+	find . -type f -name "*.pyo" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	rm -rf build/ dist/ .pytest_cache/ .coverage htmlcov/
+
+clean-all: clean
+	@echo "Removing virtual environment..."
+	rm -rf venv/
+	@echo "All clean!"
+
+test:
+	pytest
+
+test-cov:
+	pytest --cov=observability --cov-report=html --cov-report=term
+
+lint:
+	ruff check observability/
+	mypy observability/
+
+format:
+	black observability/ tests/
+	isort observability/ tests/
+	ruff check --fix observability/
+
+run-ingestion:
+	uvicorn observability.ingestion.main:app --reload --port 8000
+
+run-query:
+	uvicorn observability.api.main:app --reload --port 8001
+
+run-agent-logs:
+	python -m observability.agents.log_agent
+
+run-agent-metrics:
+	python -m observability.agents.metrics_agent
+
+run-processor-logs:
+	python -m observability.processing.log_processor
+
+run-processor-metrics:
+	python -m observability.processing.metrics_processor
+
+docker-up:
+	docker-compose up -d
+
+docker-down:
+	docker-compose down
+
+docker-logs:
+	docker-compose logs -f
+
+docker-rebuild:
+	docker-compose up -d --build
