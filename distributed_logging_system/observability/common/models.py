@@ -165,6 +165,13 @@ class MetricEntry(BaseModel):
         description="Unit of measurement"
     )
 
+    @validator("metric_type", pre=True)
+    def normalize_metric_type(cls, v):
+        """Normalize metric type to lowercase to accept both 'GAUGE' and 'gauge'."""
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
     class Config:
         """Pydantic configuration."""
         json_encoders = {
