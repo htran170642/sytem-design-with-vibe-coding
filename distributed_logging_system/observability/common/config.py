@@ -31,7 +31,8 @@ class Settings(BaseSettings):
     query_port: int = Field(default=8001)
 
     # Kafka
-    kafka_bootstrap_servers: str = Field(default="localhost:9092")
+    kafka_enabled: bool = Field(default=False)
+    kafka_bootstrap_servers: str = Field(default="localhost:19092")
     kafka_consumer_group: str = Field(default="observability-processors")
     kafka_log_topic: str = Field(default="logs.raw")
     kafka_metrics_topic: str = Field(default="metrics.raw")

@@ -1,4 +1,4 @@
-.PHONY: help venv install install-dev setup clean test lint format run-ingestion run-query docker-up docker-down
+.PHONY: help venv install install-dev setup clean test lint format run-ingestion run-query docker-up docker-down kafka-up kafka-down kafka-init kafka-logs kafka-topics
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,13 @@ help:
 	@echo "  make format         - Format code"
 	@echo "  make run-ingestion  - Run ingestion service"
 	@echo "  make run-query      - Run query service"
+	@echo ""
+	@echo "Kafka/Docker commands:"
+	@echo "  make kafka-up       - Start Redpanda (Kafka)"
+	@echo "  make kafka-down     - Stop Redpanda"
+	@echo "  make kafka-init     - Initialize Kafka topics"
+	@echo "  make kafka-logs     - View Redpanda logs"
+	@echo "  make kafka-topics   - List Kafka topics"
 	@echo "  make docker-up      - Start all services with docker-compose"
 	@echo "  make docker-down    - Stop all services"
 
@@ -115,3 +122,35 @@ docker-logs:
 
 docker-rebuild:
 	docker-compose up -d --build
+
+# Kafka/Redpanda commands
+kafka-up:
+	@echo "Starting Redpanda (Kafka)..."
+	docker-compose up -d redpanda console
+	@echo "Waiting for Redpanda to be ready..."
+	@sleep 5
+	@echo "Redpanda started!"
+	@echo "  - Kafka API: localhost:19092"
+	@echo "  - Console UI: http://localhost:8080"
+
+kafka-down:
+	docker-compose stop redpanda console
+
+kafka-init:
+	@echo "Initializing Kafka topics..."
+	./scripts/init_kafka_topics.sh
+
+kafka-logs:
+	docker logs -f observability-redpanda
+
+kafka-topics:
+	@echo "Listing Kafka topics:"
+	docker exec observability-redpanda rpk topic list
+
+kafka-consume-logs:
+	@echo "Consuming from logs.raw topic (Ctrl+C to stop):"
+	docker exec observability-redpanda rpk topic consume logs.raw --format json
+
+kafka-consume-metrics:
+	@echo "Consuming from metrics.raw topic (Ctrl+C to stop):"
+	docker exec observability-redpanda rpk topic consume metrics.raw --format json

@@ -192,8 +192,8 @@ class MockKafkaProducer(BaseProducer):
 class KafkaProducer(BaseProducer):
     """Real Kafka producer using aiokafka.
     
-    This will be implemented in Phase 3 when we add Kafka.
-    For now, it's a placeholder that raises NotImplementedError.
+    This producer writes batches to actual Kafka topics using the aiokafka library.
+    It handles connection management, serialization, and error handling.
     """
 
     def __init__(
@@ -205,7 +205,7 @@ class KafkaProducer(BaseProducer):
         """Initialize Kafka producer.
         
         Args:
-            bootstrap_servers: Kafka broker addresses (e.g., "localhost:9092")
+            bootstrap_servers: Kafka broker addresses (e.g., "localhost:19092")
             logs_topic: Topic for logs
             metrics_topic: Topic for metrics
         """
@@ -213,11 +213,58 @@ class KafkaProducer(BaseProducer):
         self.logs_topic = logs_topic
         self.metrics_topic = metrics_topic
         self.producer: Optional[Any] = None
+        self._started = False
         
         logger.info(
-            "Kafka producer initialized (will connect in Phase 3)",
+            "Kafka producer initializing",
             bootstrap_servers=bootstrap_servers,
+            logs_topic=logs_topic,
+            metrics_topic=metrics_topic,
         )
+
+    async def _ensure_started(self):
+        """Ensure producer is started and connected to Kafka."""
+        if self._started and self.producer is not None:
+            return
+        
+        try:
+            from aiokafka import AIOKafkaProducer
+            import json
+            from datetime import datetime
+            
+            # Custom JSON encoder that handles datetime objects
+            def json_serializer(obj):
+                """Serialize object to JSON, handling datetime objects."""
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+            
+            # Create producer with only core, guaranteed parameters
+            # Reference: https://aiokafka.readthedocs.io/en/stable/api.html#aiokafkaproducer-class
+            self.producer = AIOKafkaProducer(
+                bootstrap_servers=self.bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v, default=json_serializer).encode('utf-8'),
+                key_serializer=lambda k: k.encode('utf-8') if k else None,
+                compression_type='gzip',
+                acks='all',
+            )
+            
+            await self.producer.start()
+            self._started = True
+            
+            logger.info(
+                "Kafka producer started successfully",
+                bootstrap_servers=self.bootstrap_servers,
+            )
+            
+        except Exception as e:
+            logger.error(
+                "Failed to start Kafka producer",
+                error=str(e),
+                error_type=type(e).__name__,
+                bootstrap_servers=self.bootstrap_servers,
+            )
+            raise
 
     async def send_logs(self, batch: LogBatch) -> None:
         """Send log batch to Kafka.
@@ -226,12 +273,47 @@ class KafkaProducer(BaseProducer):
             batch: Log batch to send
             
         Raises:
-            NotImplementedError: Real Kafka not implemented yet (Phase 3)
+            Exception: If send fails after retries
         """
-        raise NotImplementedError(
-            "Real Kafka producer will be implemented in Phase 3. "
-            "Use MockKafkaProducer for now."
-        )
+        await self._ensure_started()
+        
+        # Extract service and host for partition key
+        service = batch.entries[0].service if batch.entries else "unknown"
+        host = batch.entries[0].host if batch.entries else "unknown"
+        key = f"{service}:{host}"
+        
+        try:
+            # Convert batch to dict for JSON serialization
+            value = {
+                "entries": [entry.dict() for entry in batch.entries],
+                "agent_version": batch.agent_version,
+            }
+            
+            # Send to Kafka (async, non-blocking)
+            await self.producer.send(
+                topic=self.logs_topic,
+                value=value,
+                key=key,
+            )
+            
+            logger.info(
+                "Log batch sent to Kafka",
+                topic=self.logs_topic,
+                num_logs=len(batch.entries),
+                service=service,
+                host=host,
+                key=key,
+            )
+            
+        except Exception as e:
+            logger.error(
+                "Failed to send log batch to Kafka",
+                error=str(e),
+                error_type=type(e).__name__,
+                topic=self.logs_topic,
+                service=service,
+            )
+            raise
 
     async def send_metrics(self, batch: MetricBatch) -> None:
         """Send metric batch to Kafka.
@@ -240,26 +322,81 @@ class KafkaProducer(BaseProducer):
             batch: Metric batch to send
             
         Raises:
-            NotImplementedError: Real Kafka not implemented yet (Phase 3)
+            Exception: If send fails after retries
         """
-        raise NotImplementedError(
-            "Real Kafka producer will be implemented in Phase 3. "
-            "Use MockKafkaProducer for now."
-        )
+        await self._ensure_started()
+        
+        # Extract service and host for partition key
+        service = batch.entries[0].service if batch.entries else "unknown"
+        host = batch.entries[0].host if batch.entries else "unknown"
+        key = f"{service}:{host}"
+        
+        try:
+            # Convert batch to dict for JSON serialization
+            value = {
+                "entries": [entry.dict() for entry in batch.entries],
+                "agent_version": batch.agent_version,
+            }
+            
+            # Send to Kafka (async, non-blocking)
+            await self.producer.send(
+                topic=self.metrics_topic,
+                value=value,
+                key=key,
+            )
+            
+            logger.info(
+                "Metric batch sent to Kafka",
+                topic=self.metrics_topic,
+                num_metrics=len(batch.entries),
+                service=service,
+                host=host,
+                key=key,
+            )
+            
+        except Exception as e:
+            logger.error(
+                "Failed to send metric batch to Kafka",
+                error=str(e),
+                error_type=type(e).__name__,
+                topic=self.metrics_topic,
+                service=service,
+            )
+            raise
 
     async def close(self) -> None:
-        """Close the producer."""
-        logger.info("Kafka producer closed")
+        """Close the Kafka producer and flush pending messages."""
+        if self.producer and self._started:
+            try:
+                await self.producer.stop()
+                logger.info("Kafka producer closed")
+                self._started = False
+            except Exception as e:
+                logger.error(
+                    "Error closing Kafka producer",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
     async def flush(self) -> None:
-        """Flush pending messages."""
-        logger.debug("Kafka producer flush")
+        """Flush pending messages to Kafka."""
+        if self.producer and self._started:
+            try:
+                await self.producer.flush()
+                logger.debug("Kafka producer flushed")
+            except Exception as e:
+                logger.error(
+                    "Error flushing Kafka producer",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
 
 class ProducerFactory:
     """Factory for creating producers.
     
     Automatically selects mock or real producer based on configuration.
+    Checks if Kafka is enabled via environment variable KAFKA_ENABLED.
     """
 
     @staticmethod
@@ -267,7 +404,7 @@ class ProducerFactory:
         """Create a producer based on settings.
         
         Returns:
-            Mock producer (for now, until Phase 3)
+            KafkaProducer if Kafka is enabled, otherwise MockKafkaProducer
             
         Example:
             ```python
@@ -277,21 +414,20 @@ class ProducerFactory:
         """
         settings = get_settings()
         
-        # For Phase 2, always use mock
-        # In Phase 3, we'll check settings.kafka_enabled
-        use_mock = True  # Change this in Phase 3
-        
-        if use_mock:
-            logger.info("Using MockKafkaProducer (Kafka not enabled)")
-            return MockKafkaProducer()
-        else:
-            # This will be enabled in Phase 3
-            logger.info("Using real KafkaProducer")
+        # Check if Kafka is enabled
+        if settings.kafka_enabled:
+            logger.info(
+                "Using real KafkaProducer",
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+            )
             return KafkaProducer(
                 bootstrap_servers=settings.kafka_bootstrap_servers,
-                logs_topic="logs.raw",
-                metrics_topic="metrics.raw",
+                logs_topic=settings.kafka_log_topic,
+                metrics_topic=settings.kafka_metrics_topic,
             )
+        else:
+            logger.info("Using MockKafkaProducer (Kafka not enabled)")
+            return MockKafkaProducer()
 
 
 # Global producer instance
