@@ -128,11 +128,20 @@ class LogAgent:
         logger.info("Log agent started")
         
         try:
-            # Run collector and flusher concurrently
-            await asyncio.gather(
-                self._collect_logs(),
-                self._flush_periodically(),
-            )
+            # Create tasks
+            collect_task = asyncio.create_task(self._collect_logs())
+            flush_task = asyncio.create_task(self._flush_periodically())
+            
+            # Wait for collector to finish (e.g., EOF on stdin)
+            await collect_task
+            
+            # Collector finished - cancel flush task
+            flush_task.cancel()
+            try:
+                await flush_task
+            except asyncio.CancelledError:
+                pass
+            
         finally:
             await self.shutdown()
 
@@ -211,13 +220,16 @@ class LogAgent:
                 line = await loop.run_in_executor(None, sys.stdin.readline)
                 
                 if not line:
-                    # EOF reached
+                    # EOF reached - trigger shutdown
+                    logger.info("EOF reached, shutting down")
+                    self.running = False
                     break
                 
                 await self._process_line(line.strip())
                 
             except Exception as e:
                 logger.error("Error reading stdin", error=str(e))
+                self.running = False
                 break
 
     async def _process_line(self, line: str) -> None:

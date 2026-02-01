@@ -1,156 +1,177 @@
-.PHONY: help venv install install-dev setup clean test lint format run-ingestion run-query docker-up docker-down kafka-up kafka-down kafka-init kafka-logs kafka-topics
+.PHONY: help
 
 help:
-	@echo "Available commands:"
-	@echo "  make venv           - Create virtual environment"
-	@echo "  make install        - Install production dependencies"
-	@echo "  make install-dev    - Install development dependencies"
-	@echo "  make setup          - Full setup (venv + deps + hooks)"
-	@echo "  make verify         - Verify project setup"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make clean-all      - Clean everything including venv"
-	@echo "  make test           - Run tests"
-	@echo "  make lint           - Run linters"
-	@echo "  make format         - Format code"
-	@echo "  make run-ingestion  - Run ingestion service"
-	@echo "  make run-query      - Run query service"
+	@echo "Observability Platform - Phase 5"
 	@echo ""
-	@echo "Kafka/Docker commands:"
-	@echo "  make kafka-up       - Start Redpanda (Kafka)"
-	@echo "  make kafka-down     - Stop Redpanda"
-	@echo "  make kafka-init     - Initialize Kafka topics"
-	@echo "  make kafka-logs     - View Redpanda logs"
-	@echo "  make kafka-topics   - List Kafka topics"
-	@echo "  make docker-up      - Start all services with docker-compose"
-	@echo "  make docker-down    - Stop all services"
-
-venv:
-	@echo "Creating virtual environment..."
-	python3 -m venv venv
+	@echo "Infrastructure Commands:"
+	@echo "  make infra-up          - Start all infrastructure (Kafka + OpenSearch)"
+	@echo "  make infra-down        - Stop all infrastructure"
+	@echo "  make infra-logs        - View infrastructure logs"
 	@echo ""
-	@echo "Virtual environment created! Activate it with:"
-	@echo "  source venv/bin/activate    (Linux/Mac)"
-	@echo "  venv\\Scripts\\activate      (Windows)"
+	@echo "Kafka Commands:"
+	@echo "  make kafka-up          - Start Kafka only"
+	@echo "  make kafka-down        - Stop Kafka"
+	@echo "  make kafka-init        - Initialize Kafka topics"
+	@echo "  make kafka-topics      - List all topics"
+	@echo "  make kafka-consume-logs    - Consume logs from Kafka"
+	@echo "  make kafka-consume-metrics - Consume metrics from Kafka"
+	@echo ""
+	@echo "OpenSearch Commands:"
+	@echo "  make opensearch-up     - Start OpenSearch only"
+	@echo "  make opensearch-down   - Stop OpenSearch"
+	@echo "  make opensearch-health - Check OpenSearch health"
+	@echo "  make opensearch-indices - List all indices"
+	@echo "  make opensearch-create-template - Create log index template"
+	@echo "  make opensearch-logs   - View OpenSearch logs"
+	@echo ""
+	@echo "Application Commands:"
+	@echo "  make run-ingestion     - Run ingestion service"
+	@echo "  make run-processor-logs    - Run log processor"
+	@echo "  make run-processor-metrics - Run metrics processor"
+	@echo ""
+	@echo "Test Commands:"
+	@echo "  make test-phase5       - Test Phase 5 (log storage)"
+	@echo "  make send-test-logs    - Send test logs"
 	@echo ""
 
-install:
-	@if [ -z "$$VIRTUAL_ENV" ]; then \
-		echo "⚠️  Warning: No virtual environment detected!"; \
-		echo "It's recommended to use a virtual environment."; \
-		echo "Run: make venv && source venv/bin/activate"; \
-		echo ""; \
-	fi
-	pip install -e .
+#############################################################################
+# Infrastructure
+#############################################################################
 
-install-dev:
-	@if [ -z "$$VIRTUAL_ENV" ]; then \
-		echo "⚠️  Warning: No virtual environment detected!"; \
-		echo "It's recommended to use a virtual environment."; \
-		echo "Run: make venv && source venv/bin/activate"; \
-		echo ""; \
-	fi
-	pip install -e ".[dev]"
+infra-up:
+	docker compose up -d
+	@echo "Waiting for services to be healthy..."
+	@sleep 10
+	@make kafka-init
+	@make opensearch-create-template
+	@echo ""
+	@echo "✅ Infrastructure ready!"
+	@echo "   - Kafka: http://localhost:19092"
+	@echo "   - OpenSearch: http://localhost:9200"
+	@echo "   - OpenSearch Dashboards: http://localhost:5601"
 
-setup: install-dev
-	pre-commit install
-	cp .env.example .env
-	@echo "Setup complete! Edit .env with your configuration."
+infra-down:
+	docker compose down
 
-setup-full: venv
-	@echo "Activating venv and installing dependencies..."
-	@echo "Please run these commands manually:"
-	@echo "  source venv/bin/activate"
-	@echo "  make install-dev"
-	@echo "  make setup"
+infra-logs:
+	docker compose logs -f
 
-verify:
-	python scripts/verify_setup.py
+#############################################################################
+# Kafka
+#############################################################################
 
-clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf build/ dist/ .pytest_cache/ .coverage htmlcov/
+kafka-up:
+	docker compose up -d redpanda
+	@echo "Waiting for Kafka to be ready..."
+	@sleep 5
 
-clean-all: clean
-	@echo "Removing virtual environment..."
-	rm -rf venv/
-	@echo "All clean!"
+kafka-down:
+	docker compose stop redpanda
 
-test:
-	pytest
+kafka-init:
+	@echo "Creating Kafka topics..."
+	docker exec observability-redpanda \
+		rpk topic create logs.raw \
+			--partitions 3 \
+			--replicas 1 \
+			--topic-config retention.ms=604800000 \
+			--topic-config compression.type=gzip \
+			2>/dev/null || echo "Topic logs.raw already exists"
+	docker exec observability-redpanda \
+		rpk topic create metrics.raw \
+			--partitions 3 \
+			--replicas 1 \
+			--topic-config retention.ms=604800000 \
+			--topic-config compression.type=gzip \
+			2>/dev/null || echo "Topic metrics.raw already exists"
+	@echo "✅ Kafka topics created"
 
-test-cov:
-	pytest --cov=observability --cov-report=html --cov-report=term
+kafka-topics:
+	docker exec observability-redpanda \
+		rpk topic list
 
-lint:
-	ruff check observability/
-	mypy observability/
+kafka-consume-logs:
+	docker exec observability-redpanda \
+		rpk topic consume logs.raw \
+			--format '%p %k: %v\n'
 
-format:
-	black observability/ tests/
-	isort observability/ tests/
-	ruff check --fix observability/
+kafka-consume-metrics:
+	docker exec observability-redpanda \
+		rpk topic consume metrics.raw \
+			--format '%p %k: %v\n'
+
+#############################################################################
+# OpenSearch
+#############################################################################
+
+opensearch-up:
+	docker compose up -d opensearch opensearch-dashboards
+	@echo "Waiting for OpenSearch to be ready..."
+	@sleep 15
+
+opensearch-down:
+	docker compose stop opensearch opensearch-dashboards
+
+opensearch-health:
+	@curl -s http://localhost:9200/_cluster/health?pretty
+
+opensearch-indices:
+	@curl -s http://localhost:9200/_cat/indices?v
+
+opensearch-create-template:
+	@echo "Creating log index template..."
+	@curl -X PUT "http://localhost:9200/_index_template/logs-template" \
+		-H 'Content-Type: application/json' \
+		-d @scripts/opensearch/log_index_template.json \
+		2>/dev/null || echo "Template creation pending..."
+	@echo ""
+	@echo "✅ Index template created"
+
+opensearch-logs:
+	docker compose logs -f opensearch
+
+opensearch-search-all:
+	@curl -s "http://localhost:9200/logs-*/_search?pretty&size=10"
+
+opensearch-count:
+	@curl -s "http://localhost:9200/logs-*/_count?pretty"
+
+#############################################################################
+# Application
+#############################################################################
 
 run-ingestion:
-	uvicorn observability.ingestion.main:app --reload --port 8000
-
-run-query:
-	uvicorn observability.api.main:app --reload --port 8001
-
-run-agent-logs:
-	python -m observability.agents.log_agent
-
-run-agent-metrics:
-	python -m observability.agents.metrics_agent
+	@echo "Starting ingestion service..."
+	python -m observability.ingestion.main
 
 run-processor-logs:
+	@echo "Starting log processor..."
 	python -m observability.processing.log_processor
 
 run-processor-metrics:
+	@echo "Starting metrics processor..."
 	python -m observability.processing.metrics_processor
 
-docker-up:
-	docker-compose up -d
+#############################################################################
+# Testing
+#############################################################################
 
-docker-down:
-	docker-compose down
+test-phase5:
+	@echo "Running Phase 5 tests..."
+	@./scripts/test_phase5.sh
 
-docker-logs:
-	docker-compose logs -f
+send-test-logs:
+	@echo "Sending test logs..."
+	@for i in 1 2 3 4 5; do \
+		echo "INFO: Test log $$i" | python -m observability.agents.log_agent --service test-app --batch-size 1; \
+		sleep 1; \
+	done
+	@echo "✅ Sent 5 test logs"
 
-docker-rebuild:
-	docker-compose up -d --build
+#############################################################################
+# Cleanup
+#############################################################################
 
-# Kafka/Redpanda commands
-kafka-up:
-	@echo "Starting Redpanda (Kafka)..."
-	docker-compose up -d redpanda console
-	@echo "Waiting for Redpanda to be ready..."
-	@sleep 5
-	@echo "Redpanda started!"
-	@echo "  - Kafka API: localhost:19092"
-	@echo "  - Console UI: http://localhost:8080"
-
-kafka-down:
-	docker-compose stop redpanda console
-
-kafka-init:
-	@echo "Initializing Kafka topics..."
-	./scripts/init_kafka_topics.sh
-
-kafka-logs:
-	docker logs -f observability-redpanda
-
-kafka-topics:
-	@echo "Listing Kafka topics:"
-	docker exec observability-redpanda rpk topic list
-
-kafka-consume-logs:
-	@echo "Consuming from logs.raw topic (Ctrl+C to stop):"
-	docker exec observability-redpanda rpk topic consume logs.raw --format json
-
-kafka-consume-metrics:
-	@echo "Consuming from metrics.raw topic (Ctrl+C to stop):"
-	docker exec observability-redpanda rpk topic consume metrics.raw --format json
+clean:
+	docker compose down -v
+	@echo "✅ All data cleared"

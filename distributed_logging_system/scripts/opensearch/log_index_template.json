@@ -1,0 +1,73 @@
+{
+  "index_patterns": ["logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index": {
+        "refresh_interval": "5s",
+        "codec": "best_compression"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "level": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "host": {
+          "type": "keyword"
+        },
+        "environment": {
+          "type": "keyword"
+        },
+        "labels": {
+          "type": "object",
+          "enabled": true
+        },
+        "trace_id": {
+          "type": "keyword"
+        },
+        "span_id": {
+          "type": "keyword"
+        },
+        "agent_version": {
+          "type": "keyword"
+        },
+        "processed_at": {
+          "type": "date"
+        },
+        "processor": {
+          "type": "keyword"
+        },
+        "partition": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "long"
+        }
+      }
+    }
+  },
+  "priority": 100,
+  "composed_of": [],
+  "version": 1,
+  "_meta": {
+    "description": "Template for observability platform log indices"
+  }
+}

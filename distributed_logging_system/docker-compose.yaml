@@ -1,7 +1,9 @@
 version: '3.8'
 
 services:
-  # Redpanda - Kafka-compatible message broker
+  #############################################################################
+  # Kafka (Redpanda) - Message Broker (Phase 3)
+  #############################################################################
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
     container_name: observability-redpanda
@@ -20,14 +22,12 @@ services:
       - --mode dev-container
       - --default-log-level=info
     ports:
-      - "19092:19092"  # Kafka API (external)
-      - "18081:18081"  # Schema Registry (external)
-      - "18082:18082"  # HTTP Proxy (external)
-      - "9644:9644"    # Admin API
-    volumes:
-      - redpanda-data:/var/lib/redpanda/data
+      - "18081:18081"  # Schema Registry
+      - "18082:18082"  # Pandaproxy
+      - "19092:19092"  # Kafka API
+      - "19644:9644"   # Admin API
     networks:
-      - observability-network
+      - observability
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
       interval: 15s
@@ -35,38 +35,62 @@ services:
       retries: 5
       start_period: 5s
 
-  # Redpanda Console - Web UI for Kafka
-  console:
-    image: docker.redpanda.com/redpandadata/console:v2.4.3
-    container_name: observability-console
-    entrypoint: /bin/sh
-    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+  #############################################################################
+  # OpenSearch - Log Storage (Phase 5)
+  #############################################################################
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: observability-opensearch
     environment:
-      CONFIG_FILEPATH: /tmp/config.yml
-      CONSOLE_CONFIG_FILE: |
-        kafka:
-          brokers: ["redpanda:9092"]
-          schemaRegistry:
-            enabled: true
-            urls: ["http://redpanda:8081"]
-        redpanda:
-          adminApi:
-            enabled: true
-            urls: ["http://redpanda:9644"]
-        connect:
-          enabled: false
+      - cluster.name=observability-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_SECURITY_PLUGIN=true  # Disable for development
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
-      - "8080:8080"
+      - "9200:9200"   # REST API
+      - "9600:9600"   # Performance Analyzer
     networks:
-      - observability-network
+      - observability
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+
+  #############################################################################
+  # OpenSearch Dashboards - UI for OpenSearch (Optional)
+  #############################################################################
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: observability-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    networks:
+      - observability
     depends_on:
-      redpanda:
+      opensearch:
         condition: service_healthy
 
 networks:
-  observability-network:
+  observability:
     driver: bridge
 
 volumes:
-  redpanda-data:
+  opensearch-data:
     driver: local
