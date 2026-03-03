@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    env:
+      # ── Application ──────────────────────────────────────────
+      APP_NAME: AIVA
+      APP_VERSION: 0.1.0
+      APP_ENV: testing
+      DEBUG: "false"
+      LOG_LEVEL: WARNING
+      LOG_FORMAT: json
+
+      # ── Security ──────────────────────────────────────────────
+      # Must match the value hard-coded in integration test fixtures
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      API_KEY: 878f56e6e56726153aa865aed057b5e9
+
+      # ── OpenAI (real calls are mocked in tests) ───────────────
+      # Use a repository secret when available; fall back to a dummy
+      # value so non-network unit tests still pass without secrets.
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'sk-test-dummy-key-ci' }}
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_MAX_TOKENS: 2000
+      OPENAI_TEMPERATURE: "0.7"
+      OPENAI_TIMEOUT: "30"
+      OPENAI_MAX_RETRIES: "2"
+
+      # ── Embedding ─────────────────────────────────────────────
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_DIMENSIONS: "1536"
+
+      # ── Database (engine created at import time; queries mocked) ─
+      DATABASE_URL: postgresql+asyncpg://aiva:aiva@localhost:5432/aiva_test
+      DATABASE_ECHO: "false"
+      DATABASE_POOL_SIZE: "5"
+      DATABASE_MAX_OVERFLOW: "10"
+
+      # ── Redis / Celery (not used in tests — all mocked) ──────
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/1
+      CELERY_RESULT_BACKEND: redis://localhost:6379/2
+      CELERY_TASK_ALWAYS_EAGER: "true"
+
+      # ── Qdrant (mocked in tests) ──────────────────────────────
+      QDRANT_HOST: localhost
+      QDRANT_PORT: "6333"
+      QDRANT_COLLECTION_NAME: aiva_documents_test
+      QDRANT_VECTOR_SIZE: "1536"
+
+      # ── CORS ──────────────────────────────────────────────────
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      CORS_ALLOW_CREDENTIALS: "true"
+
+      # ── Cache (disabled so tests are deterministic) ───────────
+      CACHE_TTL: "3600"
+      CACHE_ENABLED: "false"
+      CACHE_AI_RESPONSE_TTL: "3600"
+
+      # ── Rate limiting (disabled to avoid flakiness in CI) ─────
+      RATE_LIMIT_ENABLED: "false"
+      RATE_LIMIT_PER_MINUTE: "1000"
+      RATE_LIMIT_PER_HOUR: "10000"
+
+      # ── Document processing ───────────────────────────────────
+      UPLOAD_DIR: /tmp/aiva_test_uploads
+      MAX_UPLOAD_SIZE: "10485760"
+      ALLOWED_EXTENSIONS: '["pdf","txt","docx","md"]'
+      CHUNK_SIZE: "500"
+      CHUNK_OVERLAP: "200"
+
+      # ── Features ──────────────────────────────────────────────
+      ENABLE_DOCS: "false"
+      ENABLE_RAG: "true"
+      ENABLE_BACKGROUND_JOBS: "true"
+      ENABLE_CACHING: "false"
+
+      # ── Monitoring ────────────────────────────────────────────
+      METRICS_ENABLED: "false"
+      METRICS_PORT: "9090"
+      LOG_FILE: /tmp/aiva_test.log
+      LOG_ROTATION: 1 day
+      LOG_RETENTION: 7 days
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=65 \
+            -v
+
+      - name: Upload coverage XML (Python 3.11 only)
+        if: matrix.python-version == '3.11' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 14
+
+      - name: Upload HTML coverage report (Python 3.11 only)
+        if: matrix.python-version == '3.11' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+          retention-days: 14

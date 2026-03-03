@@ -1,0 +1,146 @@
+services:
+  # Redis - Message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: aiva-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+  # PostgreSQL - Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: aiva-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=aiva
+      - POSTGRES_PASSWORD=aiva_password
+      - POSTGRES_DB=aiva
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiva"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+  # Qdrant - Vector database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aiva-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+  # ============================================
+  # NEW: FastAPI Application
+  # ============================================
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aiva-fastapi
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://aiva:aiva_password@postgres:5432/aiva
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+  # ============================================
+  # NEW: Celery Worker - Background task processing
+  # ============================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: aiva-celery-worker
+    command: celery -A app.core.celery_app worker --loglevel=info
+    volumes:
+      - ./app:/app/app
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://aiva:aiva_password@postgres:5432/aiva
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+  # Flower - Celery monitoring
+  flower:
+    image: mher/flower:2.0
+    container_name: aiva-flower
+    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - FLOWER_PORT=5555
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aiva-network
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  aiva-network:
+    driver: bridge
