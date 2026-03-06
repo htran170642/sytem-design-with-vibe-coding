@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "flash_sale_system/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "flash_sale_system/**"
+
+defaults:
+  run:
+    working-directory: flash_sale_system
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff and mypy
+        run: pip install ruff mypy types-redis pydantic pydantic-settings
+
+      - name: Ruff check
+        run: ruff check api/ worker/ shared/
+
+      - name: Ruff format check
+        run: ruff format --check api/ worker/ shared/
+
+      - name: Mypy
+        run: mypy api/ worker/ shared/ --ignore-missing-imports
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flash_sale
+          POSTGRES_PASSWORD: flash_sale
+          POSTGRES_DB: flash_sale
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install fastapi "uvicorn[standard]" "redis[hiredis]" asyncpg pydantic \
+            pydantic-settings python-dotenv prometheus-client structlog \
+            pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          DATABASE_URL: postgresql://flash_sale:flash_sale@localhost:5432/flash_sale
+        run: pytest tests/ --cov=api --cov=worker --cov=shared --cov-report=term-missing

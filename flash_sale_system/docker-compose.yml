@@ -1,0 +1,88 @@
+services:
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flash_sale
+      POSTGRES_PASSWORD: flash_sale
+      POSTGRES_DB: flash_sale
+    volumes:
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flash_sale -d flash_sale"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── API ──────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: flash-sale-api:local
+    env_file: .env.docker
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://flash_sale:flash_sale@postgres:5432/flash_sale
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Worker ───────────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: flash-sale-worker:local
+    env_file: .env.docker
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://flash_sale:flash_sale@postgres:5432/flash_sale
+      WORKER_CONSUMER_NAME: worker-1
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy   # ensures stream + consumer group exist first
+    restart: unless-stopped
+    # Scale workers: docker compose up --scale worker=3
+    # Each replica should set WORKER_CONSUMER_NAME to a unique value —
+    # override in k8s via downward API (pod name).
+
+
+volumes:
+  redis_data:
+  postgres_data:

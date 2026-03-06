@@ -1,0 +1,33 @@
+# ── Stage 1: build deps with Poetry ──────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir poetry==1.8.2
+
+COPY pyproject.toml poetry.lock ./
+
+RUN poetry export --without dev --without-hashes -f requirements.txt -o requirements.txt && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+
+# ── Stage 2: lean runtime image ───────────────────────────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=builder /install /usr/local
+
+# Worker needs api/ for redis_ops (stream setup) and shared/ for config/schema
+COPY api/     ./api/
+COPY worker/  ./worker/
+COPY shared/  ./shared/
+
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
+
+# WORKER_CONSUMER_NAME should be overridden per-pod (e.g. worker-1, worker-2)
+# so each replica claims its own PEL slot in Redis Streams.
+ENV WORKER_CONSUMER_NAME=worker-1
+
+CMD ["python", "-m", "worker.main"]

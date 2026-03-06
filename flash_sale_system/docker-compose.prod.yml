@@ -1,0 +1,67 @@
+# Production overrides — used with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Changes from base:
+#   - Redis + Postgres ports NOT exposed (internal only)
+#   - LOG_LEVEL=WARNING (less noise)
+#   - Resource limits on every service
+#   - API workers = 8 (more parallelism)
+#   - 2 worker replicas (horizontal scale)
+#   - Stricter restart policies
+
+services:
+
+  redis:
+    ports: []          # not exposed — only reachable inside Docker network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 600M
+        reservations:
+          memory: 256M
+
+  postgres:
+    ports: []          # not exposed externally
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  api:
+    environment:
+      ENV: production
+      LOG_LEVEL: WARNING
+      API_WORKERS: "8"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  worker:
+    environment:
+      ENV: production
+      LOG_LEVEL: WARNING
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
